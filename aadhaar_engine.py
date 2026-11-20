@@ -11,16 +11,10 @@ Extracts:
 
 import base64
 from dataclasses import asdict, dataclass
-from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
-
-try:
-    from config import DEBUG_DIR
-except Exception:
-    DEBUG_DIR = Path(__file__).resolve().parent / "debug_images"
 
 try:
     from rapidocr_onnxruntime import RapidOCR
@@ -81,63 +75,6 @@ def enhance_card_image(img: np.ndarray) -> np.ndarray:
     blurred = cv2.GaussianBlur(contrast_img, (0, 0), 2.0)
     sharpened = cv2.addWeighted(contrast_img, 1.25, blurred, -0.25, 0)
     return sharpened
-
-
-def extract_profile_photo(front_img: Optional[np.ndarray], filename: str = "card.jpg") -> Tuple[Optional[str], Optional[str]]:
-    """
-    Intelligently extracts and crops the cardholder's passport portrait photo.
-    Returns: (profile_image_url, profile_image_base64)
-    """
-    if front_img is None:
-        return None, None
-
-    h, w = front_img.shape[:2]
-    cropped = None
-
-    # 1. Try Haar Cascade face detection if available
-    try:
-        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        face_cascade = cv2.CascadeClassifier(cascade_path)
-        if not face_cascade.empty():
-            gray = cv2.cvtColor(front_img, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=3,
-                minSize=(int(h * 0.12), int(w * 0.08))
-            )
-            if len(faces) > 0:
-                # Select the largest detected face
-                x, y, fw, fh = max(faces, key=lambda f: f[2] * f[3])
-                # Add passport padding
-                pad_x = int(fw * 0.25)
-                pad_y_top = int(fh * 0.35)
-                pad_y_bot = int(fh * 0.45)
-                x1 = max(0, x - pad_x)
-                y1 = max(0, y - pad_y_top)
-                x2 = min(w, x + fw + pad_x)
-                y2 = min(h, y + fh + pad_y_bot)
-                cropped = front_img[y1:y2, x1:x2]
-    except Exception:
-        pass
-
-    # 2. Geometric fallback (standard UIDAI right-side photo position)
-    if cropped is None or cropped.size == 0:
-        x1 = int(0.65 * w)
-        x2 = int(0.96 * w)
-        y1 = int(0.18 * h)
-        y2 = int(0.78 * h)
-        cropped = front_img[y1:y2, x1:x2]
-
-    # Save to disk
-    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
-    stem = Path(filename).stem
-    out_filename = f"profile_{stem}.jpg"
-    out_path = DEBUG_DIR / out_filename
-    cv2.imwrite(str(out_path), cropped, [cv2.IMWRITE_JPEG_QUALITY, 92])
-
-    # Convert to base64
-    ret, buf = cv2.imencode('.jpg', cropped, [cv2.IMWRITE_JPEG_QUALITY, 90])
-    b64_str = f"data:image/jpeg;base64,{base64.b64encode(buf.tobytes()).decode('utf-8')}" if ret else None
-    return f"/debug_images/{out_filename}", b64_str
 
 
 def fix_ocr_digits(text: str) -> str:
@@ -306,7 +243,7 @@ def clean_direct_address(raw_addr: str) -> str:
     """
     Cleans up raw OCR address:
     - Removes 'Address:' or 'पता:' prefix
-    - Removes C/O, C/0, S/O, S/0, D/O, W/O, H/O and relative name so address starts DIRECTLY from building/house/flat
+    - Removes C/O, S/O, D/O, W/O, H/O and relative name so address starts DIRECTLY from building/house/flat
     - Removes OCR noise like 'Di T:', 'Dist:'
     - Normalizes 'PO:'
     - Removes double commas and extra whitespace
@@ -314,7 +251,7 @@ def clean_direct_address(raw_addr: str) -> str:
     # 1. Remove 'Address:' or 'पता:' prefix
     addr = re.sub(r'^(?:Address|पता|To)[\s:]*', '', raw_addr, flags=re.I).strip()
 
-    # 2. Remove C/O, C/0, S/O, S/0, D/O, W/O, H/O and relative name
+    # 2. Remove C/O, C/0, S/O, S/0, D/O, W/O, H/O and relative name so address starts directly from building/house
     addr = re.sub(r'^(?:C/[O0o]|S/[O0o]|D/[O0o]|W/[O0o]|H/[O0o]|C[O0o]|S[O0o]|DO|WO|HO|आत्मज|पुत्र|पत्नी|सुपुत्र)[\s:]*[^,;\n]+[,;\n]\s*', '', addr, flags=re.I).strip()
 
     # 3. Clean OCR noise & abbreviations
@@ -406,11 +343,6 @@ def extract_aadhaar_from_image(image: np.ndarray, filename: str = "aadhaar.jpg")
         if pincode and pincode not in address_str:
             address_str = f"{address_str}, {pincode}"
 
-    # 3. Profile Photo extraction (from Front or Combined card)
-    profile_url, profile_b64 = None, None
-    if side in ["FRONT", "BOTH", "UNKNOWN"]:
-        profile_url, profile_b64 = extract_profile_photo(image, filename)
-
     confidences = [item[1] for item in ocr_results]
     avg_conf = round(float(np.mean(confidences)), 3) if confidences else 0.85
 
@@ -426,9 +358,7 @@ def extract_aadhaar_from_image(image: np.ndarray, filename: str = "aadhaar.jpg")
             "gender": gender,
             "aadhaar_number": aadhaar_num,
             "address": address_str,
-            "pincode": pincode,
-            "profile_image_url": profile_url,
-            "profile_image_base64": profile_b64
+            "pincode": pincode
         }
     }
 
@@ -439,22 +369,14 @@ def extract_aadhaar_dual_side(
     front_filename: str = "front.jpg",
     back_filename: str = "back.jpg"
 ) -> Dict[str, Any]:
-    """Combines extraction from Front and Back images into clean, direct JSON with Profile Photo."""
+    """Combines extraction from Front and Back images into clean, direct JSON."""
     res_front = extract_aadhaar_from_image(front_image, front_filename) if front_image is not None else None
     res_back = extract_aadhaar_from_image(back_image, back_filename) if back_image is not None else None
 
     data_front = res_front.get("data", {}) if res_front and res_front.get("success") else {}
     data_back = res_back.get("data", {}) if res_back and res_back.get("success") else {}
 
-    # Extract Profile photo from front image
-    profile_url, profile_b64 = None, None
-    if front_image is not None:
-        profile_url, profile_b64 = extract_profile_photo(front_image, front_filename)
-    elif data_front.get("profile_image_base64"):
-        profile_url = data_front.get("profile_image_url")
-        profile_b64 = data_front.get("profile_image_base64")
-
-    # Merge into clean schema
+    # Merge into clean schema (care_of, relation, district, state, vid completely removed)
     merged_data = {
         "name": data_front.get("name") or data_back.get("name"),
         "name_hindi": data_front.get("name_hindi") or data_back.get("name_hindi"),
@@ -463,8 +385,6 @@ def extract_aadhaar_dual_side(
         "aadhaar_number": data_front.get("aadhaar_number") or data_back.get("aadhaar_number"),
         "address": data_back.get("address") or data_front.get("address"),
         "pincode": data_back.get("pincode") or data_front.get("pincode"),
-        "profile_image_url": profile_url,
-        "profile_image_base64": profile_b64
     }
 
     conf_list = []
