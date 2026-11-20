@@ -353,46 +353,27 @@
                 </div>
               </div>
 
-              <!-- DOB, YOB, Gender -->
-              <div class="grid grid-cols-3 gap-3">
+              <!-- DOB & Gender -->
+              <div class="grid grid-cols-2 gap-3">
                 <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
-                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Date of Birth</div>
-                  <div id="adh-dob" class="text-xs font-mono font-bold text-white mt-0.5">-</div>
-                </div>
-                <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
-                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Year of Birth</div>
-                  <div id="adh-yob" class="text-xs font-mono font-bold text-teal-300 mt-0.5">-</div>
+                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Date of Birth (DOB)</div>
+                  <div id="adh-dob" class="text-sm font-mono font-bold text-white mt-0.5">-</div>
                 </div>
                 <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
                   <div class="text-[10px] text-slate-400 uppercase font-semibold">Gender</div>
-                  <div id="adh-gender" class="text-xs font-bold text-emerald-400 mt-0.5">-</div>
+                  <div id="adh-gender" class="text-sm font-bold text-emerald-400 mt-0.5">-</div>
                 </div>
               </div>
 
-              <!-- Care of (Father / Husband / Guardian) -->
-              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
-                <div class="text-[10px] text-slate-400 uppercase font-semibold flex items-center justify-between">
-                  <span>Care Of (Father / Husband / Guardian)</span>
-                  <span id="adh-relation" class="text-[10px] text-teal-400 font-bold uppercase">-</span>
-                </div>
-                <div id="adh-care-of" class="text-sm font-bold text-white mt-0.5">-</div>
-              </div>
-
-              <!-- Full Address -->
-              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 space-y-1">
-                <div class="text-[10px] text-slate-400 uppercase font-semibold">Full Address</div>
-                <div id="adh-address" class="text-xs text-slate-200 leading-relaxed">-</div>
-                <div class="pt-2 flex flex-wrap gap-2 text-[11px]">
-                  <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                    District: <b id="adh-district" class="text-white">-</b>
-                  </span>
-                  <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                    State: <b id="adh-state" class="text-white">-</b>
-                  </span>
-                  <span class="px-2 py-0.5 rounded bg-slate-800 text-emerald-300 border border-slate-700 font-mono">
+              <!-- Direct Full Address -->
+              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5 space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Direct Residence Address</div>
+                  <span class="px-2 py-0.5 rounded bg-slate-800 text-emerald-300 border border-slate-700 font-mono text-[11px]">
                     PIN: <b id="adh-pincode">-</b>
                   </span>
                 </div>
+                <div id="adh-address" class="text-xs text-slate-200 leading-relaxed font-medium">-</div>
               </div>
 
             </div>
@@ -720,13 +701,8 @@
       document.getElementById("adh-name").innerText = d.name || "N/A";
       document.getElementById("adh-name-hi").innerText = d.name_hindi || "N/A";
       document.getElementById("adh-dob").innerText = d.dob || "N/A";
-      document.getElementById("adh-yob").innerText = d.yob || "N/A";
       document.getElementById("adh-gender").innerText = d.gender || "N/A";
-      document.getElementById("adh-care-of").innerText = d.care_of || "N/A";
-      document.getElementById("adh-relation").innerText = d.relation || "GUARDIAN";
       document.getElementById("adh-address").innerText = d.address || "N/A";
-      document.getElementById("adh-district").innerText = d.district || "N/A";
-      document.getElementById("adh-state").innerText = d.state || "N/A";
       document.getElementById("adh-pincode").innerText = d.pincode || "N/A";
 
       document.getElementById("aadhaar-json-display").innerText = JSON.stringify(result, null, 2);

@@ -239,21 +239,15 @@ curl -X POST https://extractor.rusoft.in/api/aadhaar/extract-base64 \
 {
   "success": true,
   "card_side": "BOTH",
-  "confidence": 0.92,
+  "confidence": 0.94,
   "data": {
-    "aadhaar_number": "4512 8794 1234",
-    "vid": "9123 4567 8901 2345",
-    "name": "Rohit Sharma",
-    "name_hindi": "रोहित शर्मा",
-    "dob": "12/04/1995",
-    "yob": "1995",
-    "gender": "MALE",
-    "care_of": "Ramesh Kumar",
-    "relation": "FATHER",
-    "address": "Plot 45, Near Post Office, Chomu, Jaipur, Rajasthan, 303702",
-    "district": "Jaipur",
-    "state": "Rajasthan",
-    "pincode": "303702"
+    "name": "Tanuja Sharma",
+    "name_hindi": null,
+    "dob": "23/12/2011",
+    "gender": "FEMALE",
+    "aadhaar_number": "8215 6872 1541",
+    "address": "A-908, Manglam Aadhar, Gandhi Path West, Jaipur, PO: Vaishali Nagar, Jaipur, Rajasthan, 302021",
+    "pincode": "302021"
   },
   "front_status": true,
   "back_status": true
