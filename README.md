@@ -154,3 +154,108 @@ Open **`http://127.0.0.1:8000`** in your browser.
 python -m unittest tests/test_omr_pipeline.py
 ```
 Verifies alignment geometry, JSON schema compliance on `omr-2.jpg`, black pen recognition, scoring logic, SQLite persistence, and multi-core batch execution.
+
+
+---
+
+## 📡 API Documentation
+
+### 1. OMR Sheet Scanner API (`POST /api/extract`)
+
+Extracts Roll Number, Exam Details, and Question Answers. Returns structured JSON **plus the annotated OMR sheet** both as URL and as a Base64 data URI (`data:image/jpeg;base64,...`).
+
+#### A. Multipart File Upload:
+```bash
+curl -X POST https://extractor.rusoft.in/api/extract \
+  -F "file=@sample_omr.jpg"
+```
+
+#### B. Base64 JSON Request (`POST /api/omr/extract-base64`):
+```bash
+curl -X POST https://extractor.rusoft.in/api/omr/extract-base64 \
+  -H "Content-Type: application/json" \
+  -d '{"image": "data:image/jpeg;base64,/9j/4AAQSkZJRg...", "filename": "omr.jpg"}'
+```
+
+#### Response:
+```json
+{
+  "success": true,
+  "filename": "sample_omr.jpg",
+  "status": "COMPLETED",
+  "confidence": 0.98,
+  "organization": "RUSOFT EDUCATION POINT",
+  "exam_name": "SSC-SAMPLE-TEST",
+  "exam_code": "EXAM-TOWFRA",
+  "roll_number": "102580",
+  "summary": {
+    "total_questions": 50,
+    "attempted": 13,
+    "unattempted": 37,
+    "multiple_marked": 0
+  },
+  "answers": {
+    "1": "C",
+    "2": null,
+    "3": "B",
+    "50": null
+  },
+  "annotated_image_url": "/debug_images/annotated_sample_omr.jpg",
+  "annotated_image_base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ..."
+}
+```
+
+---
+
+### 2. Intelligent Aadhaar Card Extractor API (`POST /api/aadhaar/extract`)
+
+Intelligently extracts Name (English & Hindi), DOB, YOB, Gender, 12-digit Aadhaar Number, VID, Care of (Father/Husband), Full Address, District, State, and PIN code.
+
+#### A. Dual-Side Upload (Front + Back):
+```bash
+curl -X POST https://extractor.rusoft.in/api/aadhaar/extract \
+  -F "front=@aadhaar_front.jpg" \
+  -F "back=@aadhaar_back.jpg"
+```
+
+#### B. Single Card Upload (Front, Back, or Combined):
+```bash
+curl -X POST https://extractor.rusoft.in/api/aadhaar/extract \
+  -F "file=@aadhaar_card.jpg"
+```
+
+#### C. Base64 JSON Request (`POST /api/aadhaar/extract-base64`):
+```bash
+curl -X POST https://extractor.rusoft.in/api/aadhaar/extract-base64 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "front": "data:image/jpeg;base64,...",
+    "back": "data:image/jpeg;base64,..."
+  }'
+```
+
+#### Response:
+```json
+{
+  "success": true,
+  "card_side": "BOTH",
+  "confidence": 0.92,
+  "data": {
+    "aadhaar_number": "4512 8794 1234",
+    "vid": "9123 4567 8901 2345",
+    "name": "Rohit Sharma",
+    "name_hindi": "रोहित शर्मा",
+    "dob": "12/04/1995",
+    "yob": "1995",
+    "gender": "MALE",
+    "care_of": "Ramesh Kumar",
+    "relation": "FATHER",
+    "address": "Plot 45, Near Post Office, Chomu, Jaipur, Rajasthan, 303702",
+    "district": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "303702"
+  },
+  "front_status": true,
+  "back_status": true
+}
+```

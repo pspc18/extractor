@@ -7,6 +7,7 @@ Extracts:
 - Clean JSON output schema
 """
 
+import base64
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import re
@@ -31,6 +32,16 @@ def decode_image_bytes(image_bytes: bytes) -> np.ndarray:
     if image is None:
         raise ValueError("Uploaded file is not a valid image (JPG, PNG, WebP supported).")
     return image
+
+
+def decode_base64_image(base64_str: str) -> np.ndarray:
+    """Decodes a base64 string (with or without data URI prefix) into OpenCV BGR image."""
+    if not base64_str:
+        raise ValueError("Empty base64 string provided.")
+    if "," in base64_str:
+        base64_str = base64_str.split(",", 1)[1]
+    image_bytes = base64.b64decode(base64_str)
+    return decode_image_bytes(image_bytes)
 
 
 def find_fiducial_squares(image: np.ndarray) -> Optional[np.ndarray]:
@@ -546,6 +557,10 @@ def process_dynamic_omr(
     annotated_path = DEBUG_DIR / annotated_filename
     cv2.imwrite(str(annotated_path), res["annotated_image"], [cv2.IMWRITE_JPEG_QUALITY, 92])
 
+    # Base64 data URL for direct API consumption
+    ret, buf = cv2.imencode('.jpg', res["annotated_image"], [cv2.IMWRITE_JPEG_QUALITY, 85])
+    annotated_base64 = f"data:image/jpeg;base64,{base64.b64encode(buf.tobytes()).decode('utf-8')}" if ret else None
+
     return {
         "success": True,
         "filename": filename,
@@ -557,5 +572,6 @@ def process_dynamic_omr(
         "roll_number": res["roll_number"],
         "summary": res["summary"],
         "answers": res["answers"],
-        "annotated_image_url": f"/debug_images/{annotated_filename}"
+        "annotated_image_url": f"/debug_images/{annotated_filename}",
+        "annotated_image_base64": annotated_base64
     }

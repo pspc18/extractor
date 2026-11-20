@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Dynamic OMR Extractor | Instant JSON &amp; Live Table</title>
+  <title>AI Dynamic Extractor | OMR Scanner &amp; Aadhaar Card OCR</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
@@ -26,17 +26,25 @@
         </div>
         <div>
           <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
-            AI Dynamic OMR Extractor
+            AI Dynamic Extractor
             <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold uppercase tracking-wider">
-              Single &amp; Multi-Image
+              v4.0 Production
             </span>
           </h1>
-          <p class="text-xs text-slate-400">Intelligent Auto-Detection &bull; Exam Name &amp; Code OCR &bull; Live Real-Time Table</p>
+          <p class="text-xs text-slate-400">High-Precision OMR Sheet Scanner &bull; Intelligent Aadhaar Card OCR</p>
         </div>
       </div>
-      <div class="flex items-center space-x-2 text-xs text-slate-400">
-        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span>Engine Online</span>
+      
+      <!-- Top Navigation Tabs -->
+      <div class="flex items-center bg-slate-850 p-1 rounded-xl border border-slate-800 bg-slate-900/80">
+        <button id="nav-btn-omr" onclick="switchTab('omr')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-emerald-600 text-white shadow-md shadow-emerald-600/30">
+          <i class="fa-solid fa-file-lines"></i>
+          <span>OMR Scanner</span>
+        </button>
+        <button id="nav-btn-aadhaar" onclick="switchTab('aadhaar')" class="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition flex items-center gap-2">
+          <i class="fa-solid fa-id-card"></i>
+          <span>Aadhaar Extractor</span>
+        </button>
       </div>
     </div>
   </header>
@@ -44,196 +52,373 @@
   <!-- Main Container -->
   <main class="max-w-6xl mx-auto px-4 py-8 flex-1 w-full space-y-8">
 
-    <!-- Upload Card -->
-    <div class="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-6 shadow-xl backdrop-blur">
-      <form id="extract-form" onsubmit="handleExtract(event)" class="space-y-5">
-        
-        <!-- Drag & Drop Zone (Supports Single & Multiple Images) -->
-        <div id="dropzone" class="border-2 border-dashed border-slate-600 hover:border-emerald-400 bg-slate-900/50 hover:bg-emerald-950/10 rounded-xl p-8 text-center cursor-pointer transition relative group">
-          <input type="file" id="image-input" accept="image/*" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileChange(this.files)">
+    <!-- ========================================================================= -->
+    <!-- TAB 1: OMR SCANNER SECTION -->
+    <!-- ========================================================================= -->
+    <div id="section-omr" class="space-y-8">
+      
+      <!-- Upload Card -->
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-6 shadow-xl backdrop-blur">
+        <form id="extract-form" onsubmit="handleExtract(event)" class="space-y-5">
           
-          <div id="dropzone-prompt" class="space-y-3">
-            <div class="w-14 h-14 mx-auto rounded-full bg-slate-800 group-hover:bg-emerald-500/10 text-slate-400 group-hover:text-emerald-400 flex items-center justify-center text-2xl transition border border-slate-700 group-hover:border-emerald-500/30">
-              <i class="fa-solid fa-cloud-arrow-up"></i>
+          <!-- Drag & Drop Zone -->
+          <div id="dropzone" class="border-2 border-dashed border-slate-600 hover:border-emerald-400 bg-slate-900/50 hover:bg-emerald-950/10 rounded-xl p-8 text-center cursor-pointer transition relative group">
+            <input type="file" id="image-input" accept="image/*" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileChange(this.files)">
+            
+            <div id="dropzone-prompt" class="space-y-3">
+              <div class="w-14 h-14 mx-auto rounded-full bg-slate-800 group-hover:bg-emerald-500/10 text-slate-400 group-hover:text-emerald-400 flex items-center justify-center text-2xl transition border border-slate-700 group-hover:border-emerald-500/30">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+              </div>
+              <div>
+                <p class="text-sm font-semibold text-white">Click or drag &amp; drop OMR sheet image(s)</p>
+                <p class="text-xs text-slate-400 mt-1">Select 1 sheet or multiple sheets together (JPG, PNG, WebP) &bull; Any position or tilt</p>
+              </div>
             </div>
-            <div>
-              <p class="text-sm font-semibold text-white">Click or drag &amp; drop OMR sheet image(s)</p>
-              <p class="text-xs text-slate-400 mt-1">Select 1 sheet or multiple sheets together (JPG, PNG, WebP) &bull; Any position or tilt</p>
+
+            <!-- Selected Preview (Single File) -->
+            <div id="selected-preview" class="hidden flex items-center justify-center gap-4">
+              <img id="preview-thumb" src="" alt="Thumbnail" class="w-16 h-20 object-cover rounded-lg border border-slate-600 shadow-md">
+              <div class="text-left">
+                <p class="text-sm font-bold text-white" id="selected-filename">filename.jpg</p>
+                <p class="text-xs text-emerald-400 font-medium" id="selected-filesize">0 KB</p>
+                <p class="text-[11px] text-slate-400 mt-1">Click to change file(s)</p>
+              </div>
+            </div>
+
+            <!-- Selected Preview (Multiple Files) -->
+            <div id="selected-preview-multiple" class="hidden flex flex-col items-center justify-center space-y-2">
+              <div class="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl font-bold">
+                <i class="fa-solid fa-layer-group"></i>
+              </div>
+              <div class="text-center">
+                <p class="text-sm font-bold text-white"><span id="multi-file-count" class="text-emerald-400">0</span> Sheets Selected</p>
+                <p class="text-xs text-slate-400 mt-0.5">Click "Extract OMR Data" to process all sheets in real-time</p>
+              </div>
             </div>
           </div>
 
-          <!-- Selected Preview (Single File) -->
-          <div id="selected-preview" class="hidden flex items-center justify-center gap-4">
-            <img id="preview-thumb" src="" alt="Thumbnail" class="w-16 h-20 object-cover rounded-lg border border-slate-600 shadow-md">
-            <div class="text-left">
-              <p class="text-sm font-bold text-white" id="selected-filename">filename.jpg</p>
-              <p class="text-xs text-emerald-400 font-medium" id="selected-filesize">0 KB</p>
-              <p class="text-[11px] text-slate-400 mt-1">Click to change file(s)</p>
+          <!-- Extract Button & Live Progress -->
+          <div class="flex flex-col items-center justify-center space-y-3">
+            <button type="submit" id="extract-btn" disabled class="px-8 py-3.5 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2.5">
+              <i class="fa-solid fa-bolt"></i>
+              <span id="btn-text">Extract OMR Data</span>
+            </button>
+            
+            <div id="batch-progress-box" class="hidden text-xs text-emerald-400 font-medium flex items-center gap-2 bg-emerald-950/40 px-4 py-1.5 rounded-full border border-emerald-800/40">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span id="batch-progress-text">Processing sheets...</span>
             </div>
           </div>
-
-          <!-- Selected Preview (Multiple Files) -->
-          <div id="selected-preview-multiple" class="hidden flex flex-col items-center justify-center space-y-2">
-            <div class="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl font-bold">
-              <i class="fa-solid fa-layer-group"></i>
-            </div>
-            <div class="text-center">
-              <p class="text-sm font-bold text-white"><span id="multi-file-count" class="text-emerald-400">0</span> Sheets Selected</p>
-              <p class="text-xs text-slate-400 mt-0.5">Click "Extract OMR Data" to process all sheets in real-time</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Extract Button & Live Progress -->
-        <div class="flex flex-col items-center justify-center space-y-3">
-          <button type="submit" id="extract-btn" disabled class="px-8 py-3.5 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2.5">
-            <i class="fa-solid fa-bolt"></i>
-            <span id="btn-text">Extract OMR Data</span>
-          </button>
-          
-          <!-- Real-Time Progress Indicator -->
-          <div id="batch-progress-box" class="hidden text-xs text-emerald-400 font-medium flex items-center gap-2 bg-emerald-950/40 px-4 py-1.5 rounded-full border border-emerald-800/40">
-            <i class="fa-solid fa-spinner fa-spin"></i>
-            <span id="batch-progress-text">Processing sheets...</span>
-          </div>
-        </div>
-
-      </form>
-    </div>
-
-    <!-- Results Section (Single / Active Sheet Viewer) -->
-    <div id="results-card" class="hidden space-y-6">
-
-      <!-- Exam Metadata Bar (Exam Name, Exam Code, Org) -->
-      <div id="meta-banner" class="bg-gradient-to-r from-slate-800/90 to-slate-800/60 border border-slate-700/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-lg">
-        <div class="space-y-1">
-          <div class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold flex items-center gap-1.5">
-            <i class="fa-solid fa-building-columns text-emerald-400"></i> Organization / Institution
-          </div>
-          <div class="text-base font-bold text-white tracking-wide" id="res-org">Not detected</div>
-        </div>
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="bg-slate-900/80 border border-slate-700/60 px-4 py-2 rounded-xl">
-            <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Exam Name</div>
-            <div class="text-sm font-bold font-mono text-emerald-300" id="res-exam-name">-</div>
-          </div>
-          <div class="bg-slate-900/80 border border-slate-700/60 px-4 py-2 rounded-xl">
-            <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Exam Code</div>
-            <div class="text-sm font-bold font-mono text-teal-300" id="res-exam-code">-</div>
-          </div>
-        </div>
+        </form>
       </div>
 
-      <!-- Summary KPI Row -->
-      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
-          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Roll Number</div>
-          <div class="text-xl font-bold font-mono text-emerald-400 mt-0.5" id="res-roll">-</div>
-        </div>
-        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
-          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Total Questions</div>
-          <div class="text-xl font-bold text-white mt-0.5" id="res-total">0</div>
-        </div>
-        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
-          <div class="text-[11px] text-emerald-400 uppercase tracking-wider font-semibold">Attempted</div>
-          <div class="text-xl font-bold text-emerald-400 mt-0.5" id="res-attempted">0</div>
-        </div>
-        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
-          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Unattempted</div>
-          <div class="text-xl font-bold text-slate-300 mt-0.5" id="res-unattempted">0</div>
-        </div>
-        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
-          <div class="text-[11px] text-amber-400 uppercase tracking-wider font-semibold">Status / Conf</div>
-          <div class="text-base font-bold text-white mt-1" id="res-status">-</div>
-        </div>
-      </div>
+      <!-- Results Section (OMR Sheet Viewer) -->
+      <div id="results-card" class="hidden space-y-6">
 
-      <!-- Split View: Visual Preview on Left, JSON on Right -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        <!-- Left: Visual Inspection Image (5 cols) -->
-        <div class="lg:col-span-5 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex flex-col">
-          <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
-            <span class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <i class="fa-solid fa-eye text-emerald-400"></i> Pixel-Centric Detection Overlay
-            </span>
-            <span class="text-[11px] text-slate-400">Green = Answer, Red = Multi</span>
+        <!-- Exam Metadata Bar -->
+        <div id="meta-banner" class="bg-gradient-to-r from-slate-800/90 to-slate-800/60 border border-slate-700/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-lg">
+          <div class="space-y-1">
+            <div class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold flex items-center gap-1.5">
+              <i class="fa-solid fa-building-columns text-emerald-400"></i> Organization / Institution
+            </div>
+            <div class="text-base font-bold text-white tracking-wide" id="res-org">Not detected</div>
           </div>
-          <div class="flex-1 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center p-2 min-h-[450px]">
-            <img id="res-annotated-img" src="" alt="Annotated Sheet" class="max-h-[550px] w-auto object-contain rounded cursor-pointer hover:opacity-95 transition" onclick="openZoomModal()">
-          </div>
-        </div>
-
-        <!-- Right: JSON Viewer (7 cols) -->
-        <div class="lg:col-span-7 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex flex-col">
-          <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
-            <span class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <i class="fa-solid fa-code text-teal-400"></i> JSON Output (<span id="active-sheet-name" class="font-mono text-emerald-400">sheet</span>)
-            </span>
-            <div class="flex items-center space-x-2">
-              <button onclick="copyJson()" id="copy-btn" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
-                <i class="fa-regular fa-copy"></i> Copy JSON
-              </button>
-              <button onclick="downloadJson()" class="px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5">
-                <i class="fa-solid fa-download"></i> Download
-              </button>
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="bg-slate-900/80 border border-slate-700/60 px-4 py-2 rounded-xl">
+              <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Exam Name</div>
+              <div class="text-sm font-bold font-mono text-emerald-300" id="res-exam-name">-</div>
+            </div>
+            <div class="bg-slate-900/80 border border-slate-700/60 px-4 py-2 rounded-xl">
+              <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Exam Code</div>
+              <div class="text-sm font-bold font-mono text-teal-300" id="res-exam-code">-</div>
             </div>
           </div>
-          <div class="flex-1 bg-slate-950 rounded-xl p-4 overflow-auto custom-scrollbar border border-slate-800 text-xs font-mono text-emerald-300 max-h-[550px]">
-            <pre id="json-display" class="select-all">{}</pre>
+        </div>
+
+        <!-- Summary KPI Row -->
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+            <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Roll Number</div>
+            <div class="text-xl font-bold font-mono text-emerald-400 mt-0.5" id="res-roll">-</div>
+          </div>
+          <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+            <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Total Questions</div>
+            <div class="text-xl font-bold text-white mt-0.5" id="res-total">0</div>
+          </div>
+          <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+            <div class="text-[11px] text-emerald-400 uppercase tracking-wider font-semibold">Attempted</div>
+            <div class="text-xl font-bold text-emerald-400 mt-0.5" id="res-attempted">0</div>
+          </div>
+          <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+            <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Unattempted</div>
+            <div class="text-xl font-bold text-slate-300 mt-0.5" id="res-unattempted">0</div>
+          </div>
+          <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+            <div class="text-[11px] text-amber-400 uppercase tracking-wider font-semibold">Status / Conf</div>
+            <div class="text-base font-bold text-white mt-1" id="res-status">-</div>
           </div>
         </div>
 
+        <!-- Split View: Visual Preview on Left, JSON on Right -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div class="lg:col-span-5 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex flex-col">
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <i class="fa-solid fa-eye text-emerald-400"></i> Pixel-Centric Detection Overlay
+              </span>
+              <span class="text-[11px] text-slate-400">Green = Answer, Red = Multi</span>
+            </div>
+            <div class="flex-1 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center p-2 min-h-[450px]">
+              <img id="res-annotated-img" src="" alt="Annotated Sheet" class="max-h-[550px] w-auto object-contain rounded cursor-pointer hover:opacity-95 transition" onclick="openZoomModal()">
+            </div>
+          </div>
+
+          <div class="lg:col-span-7 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex flex-col">
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <i class="fa-solid fa-code text-teal-400"></i> JSON Output (<span id="active-sheet-name" class="font-mono text-emerald-400">sheet</span>)
+              </span>
+              <div class="flex items-center space-x-2">
+                <button onclick="copyJson('json-display')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
+                  <i class="fa-regular fa-copy"></i> Copy JSON
+                </button>
+                <button onclick="downloadJson()" class="px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5">
+                  <i class="fa-solid fa-download"></i> Download
+                </button>
+              </div>
+            </div>
+            <div class="flex-1 bg-slate-950 rounded-xl p-4 overflow-auto custom-scrollbar border border-slate-800 text-xs font-mono text-emerald-300 max-h-[550px]">
+              <pre id="json-display" class="select-all">{}</pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Real-Time Tabular Results -->
+      <div id="batch-table-container" class="hidden bg-slate-800/60 border border-slate-700/60 rounded-2xl overflow-hidden shadow-xl backdrop-blur">
+        <div class="p-4 border-b border-slate-700/60 flex flex-wrap items-center justify-between gap-3 bg-slate-950/40">
+          <div>
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-table-list text-emerald-400"></i> Extracted Sheets Table
+              <span id="table-count-badge" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">0</span>
+            </h2>
+            <p class="text-xs text-slate-400">Click any row to inspect its full JSON and visual overlay above</p>
+          </div>
+          
+          <div class="flex items-center space-x-2">
+            <button onclick="exportTableToCsv()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
+              <i class="fa-solid fa-file-csv text-emerald-400"></i> Export CSV
+            </button>
+            <button onclick="exportAllToJson()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
+              <i class="fa-solid fa-file-code text-teal-400"></i> Export JSON
+            </button>
+            <button onclick="clearTable()" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-red-900/50 text-slate-400 hover:text-red-300 transition" title="Clear table">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto max-h-[450px] custom-scrollbar">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead class="sticky top-0 bg-slate-950/90 backdrop-blur z-10 border-b border-slate-700/70">
+              <tr class="text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                <th class="p-3 w-12 text-center">#</th>
+                <th class="p-3">Filename</th>
+                <th class="p-3">Organization</th>
+                <th class="p-3">Exam Name</th>
+                <th class="p-3">Exam Code</th>
+                <th class="p-3">Roll Number</th>
+                <th class="p-3">Attempted / Total</th>
+                <th class="p-3">Status</th>
+                <th class="p-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="batch-table-body" class="divide-y divide-slate-700/50 text-slate-300">
+            </tbody>
+          </table>
+        </div>
       </div>
 
     </div>
 
     <!-- ========================================================================= -->
-    <!-- REAL-TIME TABULAR RESULTS SECTION (MODULAR) -->
+    <!-- TAB 2: AADHAAR CARD EXTRACTOR SECTION -->
     <!-- ========================================================================= -->
-    <div id="batch-table-container" class="hidden bg-slate-800/60 border border-slate-700/60 rounded-2xl overflow-hidden shadow-xl backdrop-blur">
-      <div class="p-4 border-b border-slate-700/60 flex flex-wrap items-center justify-between gap-3 bg-slate-950/40">
-        <div>
-          <h2 class="text-sm font-bold text-white flex items-center gap-2">
-            <i class="fa-solid fa-table-list text-emerald-400"></i> Extracted Sheets Table
-            <span id="table-count-badge" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">0</span>
+    <div id="section-aadhaar" class="hidden space-y-8">
+      
+      <!-- Upload Card for Aadhaar -->
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-6 shadow-xl backdrop-blur">
+        <div class="mb-4">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-id-card text-emerald-400"></i> Intelligent Aadhaar Card OCR
           </h2>
-          <p class="text-xs text-slate-400">Click any row to inspect its full JSON and visual overlay above</p>
+          <p class="text-xs text-slate-400">Upload Front side, Back side, or both sides together to extract complete details into clean JSON.</p>
         </div>
-        
-        <div class="flex items-center space-x-2">
-          <button onclick="exportTableToCsv()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
-            <i class="fa-solid fa-file-csv text-emerald-400"></i> Export CSV
-          </button>
-          <button onclick="exportAllToJson()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
-            <i class="fa-solid fa-file-code text-teal-400"></i> Export JSON
-          </button>
-          <button onclick="clearTable()" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-red-900/50 text-slate-400 hover:text-red-300 transition" title="Clear table">
-            <i class="fa-solid fa-trash-can"></i>
-          </button>
-        </div>
+
+        <form id="aadhaar-form" onsubmit="handleAadhaarExtract(event)" class="space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <!-- Front Side Upload Box -->
+            <div class="border-2 border-dashed border-slate-600 hover:border-emerald-400 bg-slate-900/50 rounded-xl p-5 text-center cursor-pointer transition relative group">
+              <input type="file" id="aadhaar-front-input" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleAadhaarFileChange('front', this.files)">
+              <div id="front-prompt" class="space-y-2">
+                <div class="w-10 h-10 mx-auto rounded-full bg-slate-800 text-slate-400 group-hover:text-emerald-400 flex items-center justify-center text-lg transition">
+                  <i class="fa-solid fa-address-card"></i>
+                </div>
+                <p class="text-xs font-semibold text-white">Front Side Image</p>
+                <p class="text-[11px] text-slate-400">Name, DOB, Gender, Aadhaar No.</p>
+              </div>
+              <div id="front-preview-box" class="hidden flex items-center justify-center gap-3">
+                <img id="front-thumb" src="" alt="Front" class="w-14 h-14 object-cover rounded-lg border border-slate-600">
+                <div class="text-left text-xs">
+                  <p class="font-bold text-white" id="front-name-label">front.jpg</p>
+                  <p class="text-emerald-400 font-mono text-[11px]" id="front-size-label">0 KB</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Back Side Upload Box -->
+            <div class="border-2 border-dashed border-slate-600 hover:border-teal-400 bg-slate-900/50 rounded-xl p-5 text-center cursor-pointer transition relative group">
+              <input type="file" id="aadhaar-back-input" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleAadhaarFileChange('back', this.files)">
+              <div id="back-prompt" class="space-y-2">
+                <div class="w-10 h-10 mx-auto rounded-full bg-slate-800 text-slate-400 group-hover:text-teal-400 flex items-center justify-center text-lg transition">
+                  <i class="fa-solid fa-map-location-dot"></i>
+                </div>
+                <p class="text-xs font-semibold text-white">Back Side Image</p>
+                <p class="text-[11px] text-slate-400">Care of (Father/Husband), Address, PIN</p>
+              </div>
+              <div id="back-preview-box" class="hidden flex items-center justify-center gap-3">
+                <img id="back-thumb" src="" alt="Back" class="w-14 h-14 object-cover rounded-lg border border-slate-600">
+                <div class="text-left text-xs">
+                  <p class="font-bold text-white" id="back-name-label">back.jpg</p>
+                  <p class="text-teal-400 font-mono text-[11px]" id="back-size-label">0 KB</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="flex flex-col items-center justify-center space-y-3">
+            <button type="submit" id="aadhaar-btn" disabled class="px-8 py-3.5 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2.5">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span id="aadhaar-btn-text">Extract Aadhaar Details</span>
+            </button>
+            <div id="aadhaar-spinner" class="hidden text-xs text-teal-400 font-medium flex items-center gap-2 bg-teal-950/40 px-4 py-1.5 rounded-full border border-teal-800/40">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>Analyzing Aadhaar Card with AI OCR...</span>
+            </div>
+          </div>
+        </form>
       </div>
 
-      <div class="overflow-x-auto max-h-[450px] custom-scrollbar">
-        <table class="w-full text-left border-collapse text-xs">
-          <thead class="sticky top-0 bg-slate-950/90 backdrop-blur z-10 border-b border-slate-700/70">
-            <tr class="text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-              <th class="p-3 w-12 text-center">#</th>
-              <th class="p-3">Filename</th>
-              <th class="p-3">Organization</th>
-              <th class="p-3">Exam Name</th>
-              <th class="p-3">Exam Code</th>
-              <th class="p-3">Roll Number</th>
-              <th class="p-3">Attempted / Total</th>
-              <th class="p-3">Status</th>
-              <th class="p-3 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody id="batch-table-body" class="divide-y divide-slate-700/50 text-slate-300">
-            <!-- Dynamic Rows -->
-          </tbody>
-        </table>
+      <!-- Aadhaar Extracted Profile View -->
+      <div id="aadhaar-results-card" class="hidden space-y-6">
+        
+        <!-- Profile Cards Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Left: Identity & Demographic Information (6 cols) -->
+          <div class="lg:col-span-6 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-5 space-y-4 shadow-xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-700/50">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                <i class="fa-solid fa-user-check"></i> Demographic &amp; Identity
+              </h3>
+              <span id="aadhaar-side-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                BOTH SIDES
+              </span>
+            </div>
+
+            <div class="space-y-3 text-xs">
+              <!-- Aadhaar Number -->
+              <div class="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 flex items-center justify-between">
+                <div>
+                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Aadhaar Number</div>
+                  <div id="adh-num" class="text-lg font-mono font-bold text-emerald-300 mt-0.5">XXXX XXXX XXXX</div>
+                </div>
+                <button onclick="copyToClipboard(document.getElementById('adh-num').innerText)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition">
+                  <i class="fa-regular fa-copy"></i>
+                </button>
+              </div>
+
+              <!-- Name & Hindi Name -->
+              <div class="grid grid-cols-2 gap-3">
+                <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Name (English)</div>
+                  <div id="adh-name" class="text-sm font-bold text-white mt-0.5">-</div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Name (Hindi)</div>
+                  <div id="adh-name-hi" class="text-sm font-bold text-emerald-400 mt-0.5">-</div>
+                </div>
+              </div>
+
+              <!-- DOB, YOB, Gender -->
+              <div class="grid grid-cols-3 gap-3">
+                <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Date of Birth</div>
+                  <div id="adh-dob" class="text-xs font-mono font-bold text-white mt-0.5">-</div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Year of Birth</div>
+                  <div id="adh-yob" class="text-xs font-mono font-bold text-teal-300 mt-0.5">-</div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+                  <div class="text-[10px] text-slate-400 uppercase font-semibold">Gender</div>
+                  <div id="adh-gender" class="text-xs font-bold text-emerald-400 mt-0.5">-</div>
+                </div>
+              </div>
+
+              <!-- Care of (Father / Husband / Guardian) -->
+              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+                <div class="text-[10px] text-slate-400 uppercase font-semibold flex items-center justify-between">
+                  <span>Care Of (Father / Husband / Guardian)</span>
+                  <span id="adh-relation" class="text-[10px] text-teal-400 font-bold uppercase">-</span>
+                </div>
+                <div id="adh-care-of" class="text-sm font-bold text-white mt-0.5">-</div>
+              </div>
+
+              <!-- Full Address -->
+              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 space-y-1">
+                <div class="text-[10px] text-slate-400 uppercase font-semibold">Full Address</div>
+                <div id="adh-address" class="text-xs text-slate-200 leading-relaxed">-</div>
+                <div class="pt-2 flex flex-wrap gap-2 text-[11px]">
+                  <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                    District: <b id="adh-district" class="text-white">-</b>
+                  </span>
+                  <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                    State: <b id="adh-state" class="text-white">-</b>
+                  </span>
+                  <span class="px-2 py-0.5 rounded bg-slate-800 text-emerald-300 border border-slate-700 font-mono">
+                    PIN: <b id="adh-pincode">-</b>
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Right: JSON Viewer (6 cols) -->
+          <div class="lg:col-span-6 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-5 flex flex-col shadow-xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-700/50 mb-3">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-teal-400 flex items-center gap-2">
+                <i class="fa-solid fa-code"></i> Structured JSON Output
+              </h3>
+              <div class="flex items-center space-x-2">
+                <button onclick="copyJson('aadhaar-json-display')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
+                  <i class="fa-regular fa-copy"></i> Copy JSON
+                </button>
+              </div>
+            </div>
+            <div class="flex-1 bg-slate-950 rounded-xl p-4 overflow-auto custom-scrollbar border border-slate-800 text-xs font-mono text-teal-300 max-h-[500px]">
+              <pre id="aadhaar-json-display" class="select-all">{}</pre>
+            </div>
+          </div>
+
+        </div>
+
       </div>
+
     </div>
 
   </main>
@@ -244,10 +429,33 @@
   </div>
 
   <footer class="border-t border-slate-800/60 py-4 text-center text-xs text-slate-500">
-    AI Dynamic OMR Extractor &bull; Zero API Cost &bull; Instant Intelligence
+    AI Dynamic Extractor &bull; OMR &amp; Aadhaar Card Intelligence &bull; Zero API Cost
   </footer>
 
   <script>
+    // Tab Switching
+    function switchTab(tab) {
+      const btnOmr = document.getElementById("nav-btn-omr");
+      const btnAadhaar = document.getElementById("nav-btn-aadhaar");
+      const secOmr = document.getElementById("section-omr");
+      const secAadhaar = document.getElementById("section-aadhaar");
+
+      if (tab === "omr") {
+        secOmr.classList.remove("hidden");
+        secAadhaar.classList.add("hidden");
+        btnOmr.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-emerald-600 text-white shadow-md shadow-emerald-600/30";
+        btnAadhaar.className = "px-4 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition flex items-center gap-2";
+      } else {
+        secOmr.classList.add("hidden");
+        secAadhaar.classList.remove("hidden");
+        btnAadhaar.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-emerald-600 text-white shadow-md shadow-emerald-600/30";
+        btnOmr.className = "px-4 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition flex items-center gap-2";
+      }
+    }
+
+    // =========================================================================
+    // OMR LOGIC
+    // =========================================================================
     let currentRawJson = null;
     let extractedSheetsList = [];
     let selectedFiles = [];
@@ -316,13 +524,8 @@
           const data = await res.json();
           currentRawJson = data;
 
-          // Add to stored list
           extractedSheetsList.push(data);
-
-          // Update Top Viewer with latest extracted sheet
           displayResults(data);
-
-          // Append row to Real-Time Table immediately
           appendRowToTable(data, extractedSheetsList.length);
 
         } catch (err) {
@@ -337,35 +540,26 @@
 
     function displayResults(data) {
       document.getElementById("results-card").classList.remove("hidden");
-
-      // Active sheet name
       document.getElementById("active-sheet-name").innerText = data.filename || "sheet.jpg";
-
-      // Header Meta (Exam Name, Exam Code, Org)
       document.getElementById("res-org").innerText = data.organization || "Detected OMR Sheet";
       document.getElementById("res-exam-name").innerText = data.exam_name || "N/A";
       document.getElementById("res-exam-code").innerText = data.exam_code || "N/A";
-
-      // KPI row
       document.getElementById("res-roll").innerText = data.roll_number || "AUTO";
       document.getElementById("res-total").innerText = data.summary.total_questions;
       document.getElementById("res-attempted").innerText = data.summary.attempted;
       document.getElementById("res-unattempted").innerText = data.summary.unattempted;
       document.getElementById("res-status").innerHTML = `<span class="text-emerald-400 font-bold">${data.status}</span> <span class="text-xs text-slate-400">(${(data.confidence * 100).toFixed(1)}%)</span>`;
 
-      // Visual Image
       const imgElem = document.getElementById("res-annotated-img");
       imgElem.src = `${data.annotated_image_url}?t=${Date.now()}`;
       document.getElementById("zoom-modal-img").src = imgElem.src;
 
-      // JSON Code Block
       document.getElementById("json-display").innerText = JSON.stringify(data, null, 2);
     }
 
     function appendRowToTable(data, index) {
       const container = document.getElementById("batch-table-container");
       container.classList.remove("hidden");
-
       document.getElementById("table-count-badge").innerText = extractedSheetsList.length;
 
       const tbody = document.getElementById("batch-table-body");
@@ -398,34 +592,11 @@
           </button>
         </td>
       `;
-
       tbody.appendChild(tr);
     }
 
-    function copyJson() {
-      if (!currentRawJson) return;
-      navigator.clipboard.writeText(JSON.stringify(currentRawJson, null, 2)).then(() => {
-        const btn = document.getElementById("copy-btn");
-        btn.innerHTML = `<i class="fa-solid fa-check text-emerald-400"></i> Copied!`;
-        setTimeout(() => {
-          btn.innerHTML = `<i class="fa-regular fa-copy"></i> Copy JSON`;
-        }, 2000);
-      });
-    }
-
-    function downloadJson() {
-      if (!currentRawJson) return;
-      const str = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentRawJson, null, 2));
-      const a = document.createElement("a");
-      a.setAttribute("href", str);
-      a.setAttribute("download", `${currentRawJson.filename || 'omr_result'}.json`);
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-
     function exportAllToJson() {
-      if (extractedSheetsList.length === 0) return alert("Table is empty.");
+      if (extractedSheetsList.length === 0) return alert("No sheets extracted yet.");
       const str = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(extractedSheetsList, null, 2));
       const a = document.createElement("a");
       a.setAttribute("href", str);
@@ -437,11 +608,8 @@
 
     function exportTableToCsv() {
       if (extractedSheetsList.length === 0) return alert("Table is empty.");
-      
       let csvContent = "data:text/csv;charset=utf-8,";
-      // Header
       csvContent += "Filename,Organization,Exam Name,Exam Code,Roll Number,Total Questions,Attempted,Unattempted,Multiple Marked,Status\r\n";
-
       extractedSheetsList.forEach(item => {
         const row = [
           `"${item.filename}"`,
@@ -457,7 +625,6 @@
         ];
         csvContent += row.join(",") + "\r\n";
       });
-
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
@@ -473,6 +640,120 @@
       document.getElementById("batch-table-body").innerHTML = "";
       document.getElementById("table-count-badge").innerText = "0";
       document.getElementById("batch-table-container").classList.add("hidden");
+    }
+
+    // =========================================================================
+    // AADHAAR LOGIC
+    // =========================================================================
+    let frontAadhaarFile = null;
+    let backAadhaarFile = null;
+
+    function handleAadhaarFileChange(side, files) {
+      if (!files || files.length === 0) return;
+      const file = files[0];
+
+      if (side === 'front') {
+        frontAadhaarFile = file;
+        document.getElementById("front-prompt").classList.add("hidden");
+        document.getElementById("front-preview-box").classList.remove("hidden");
+        document.getElementById("front-name-label").innerText = file.name;
+        document.getElementById("front-size-label").innerText = (file.size / 1024).toFixed(1) + " KB";
+        const reader = new FileReader();
+        reader.onload = (e) => { document.getElementById("front-thumb").src = e.target.result; };
+        reader.readAsDataURL(file);
+      } else {
+        backAadhaarFile = file;
+        document.getElementById("back-prompt").classList.add("hidden");
+        document.getElementById("back-preview-box").classList.remove("hidden");
+        document.getElementById("back-name-label").innerText = file.name;
+        document.getElementById("back-size-label").innerText = (file.size / 1024).toFixed(1) + " KB";
+        const reader = new FileReader();
+        reader.onload = (e) => { document.getElementById("back-thumb").src = e.target.result; };
+        reader.readAsDataURL(file);
+      }
+
+      document.getElementById("aadhaar-btn").disabled = !(frontAadhaarFile || backAadhaarFile);
+    }
+
+    async function handleAadhaarExtract(e) {
+      e.preventDefault();
+      if (!frontAadhaarFile && !backAadhaarFile) return;
+
+      const btn = document.getElementById("aadhaar-btn");
+      const spinner = document.getElementById("aadhaar-spinner");
+
+      btn.disabled = true;
+      spinner.classList.remove("hidden");
+
+      const formData = new FormData();
+      if (frontAadhaarFile) formData.append("front", frontAadhaarFile);
+      if (backAadhaarFile) formData.append("back", backAadhaarFile);
+
+      try {
+        const res = await fetch("/api/aadhaar/extract", {
+          method: "POST",
+          body: formData
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || "Aadhaar extraction failed");
+        }
+
+        const data = await res.json();
+        displayAadhaarResults(data);
+
+      } catch (err) {
+        alert("Extraction Error: " + err.message);
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add("hidden");
+      }
+    }
+
+    function displayAadhaarResults(result) {
+      document.getElementById("aadhaar-results-card").classList.remove("hidden");
+      const d = result.data || {};
+
+      document.getElementById("aadhaar-side-badge").innerText = (result.card_side || "DETECTED") + " SIDE";
+      document.getElementById("adh-num").innerText = d.aadhaar_number || "Not detected";
+      document.getElementById("adh-name").innerText = d.name || "N/A";
+      document.getElementById("adh-name-hi").innerText = d.name_hindi || "N/A";
+      document.getElementById("adh-dob").innerText = d.dob || "N/A";
+      document.getElementById("adh-yob").innerText = d.yob || "N/A";
+      document.getElementById("adh-gender").innerText = d.gender || "N/A";
+      document.getElementById("adh-care-of").innerText = d.care_of || "N/A";
+      document.getElementById("adh-relation").innerText = d.relation || "GUARDIAN";
+      document.getElementById("adh-address").innerText = d.address || "N/A";
+      document.getElementById("adh-district").innerText = d.district || "N/A";
+      document.getElementById("adh-state").innerText = d.state || "N/A";
+      document.getElementById("adh-pincode").innerText = d.pincode || "N/A";
+
+      document.getElementById("aadhaar-json-display").innerText = JSON.stringify(result, null, 2);
+      document.getElementById("aadhaar-results-card").scrollIntoView({ behavior: "smooth" });
+    }
+
+    // Utilities
+    function copyJson(elemId) {
+      const text = document.getElementById(elemId).innerText;
+      copyToClipboard(text);
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert("Copied to clipboard!");
+      });
+    }
+
+    function downloadJson() {
+      if (!currentRawJson) return;
+      const str = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentRawJson, null, 2));
+      const a = document.createElement("a");
+      a.setAttribute("href", str);
+      a.setAttribute("download", `omr_result_${currentRawJson.filename || Date.now()}.json`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     }
 
     function openZoomModal() {
