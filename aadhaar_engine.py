@@ -131,37 +131,72 @@ def extract_aadhaar_number(text: str) -> Optional[str]:
     return None
 
 
+def normalize_date(d_str: str) -> str:
+    clean = re.sub(r'[.\-\s]', '/', d_str)
+    parts = [p.strip() for p in clean.split('/') if p.strip()]
+    if len(parts) == 3:
+        return f"{parts[0].zfill(2)}/{parts[1].zfill(2)}/{parts[2]}"
+    return d_str
+
+
 def extract_dob(text: str, lines: List[str]) -> Optional[str]:
     """
-    Robust Date of Birth extractor.
-    Handles DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, DD MM YYYY, and line-proximity matching.
+    Intelligent Date of Birth extractor.
+    - Matches DOB keywords across same line, next line (label above date), or previous line.
+    - Ignores Issue / Enrollment / Generation dates (e.g. Enrollment timestamps like 23/12/2011).
+    - Prioritizes true birth years.
     """
-    # 1. Proximity check on individual lines containing DOB keywords
-    dob_keywords = re.compile(r'(?:DOB|D0B|DO8|Date of Birth|जन्म[\s]*तिथि|जन्म[\s]*तारीख|D\.O\.B)', re.I)
-    for line in lines:
-        if dob_keywords.search(line):
-            # Look for 8-digit date pattern inside this specific line
-            m = re.search(r'([0-3]?[0-9][/\-.\s][0-1]?[0-9][/\-.\s][12][0-9]{3})', line)
+    dob_keywords = re.compile(
+        r'(?:DOB|D\.?O\.?B\.?|D0B|DO8|Date\s*of\s*Birth|जन्म[\s\-/]*तिथि|जन्म[\s\-/]*तारीख|जन्म[\s\-/]*दिनांक)',
+        re.I
+    )
+    date_pattern = re.compile(r'([0-3]?[0-9][/\-.\s][0-1]?[0-9][/\-.\s][12][0-9]{3})')
+    issue_keywords = re.compile(
+        r'(?:Issue|Download|Enrolment|Enrollment|Generated|Print|Valid|जारी|नामांकन)',
+        re.I
+    )
+
+    # 1. Proximity check on lines containing DOB keywords
+    for i, line in enumerate(lines):
+        if dob_keywords.search(line) and not issue_keywords.search(line):
+            # Check current line
+            m = date_pattern.search(line)
             if m:
-                d_str = re.sub(r'[.\-\s]', '/', m.group(1))
-                parts = [p.strip() for p in d_str.split('/') if p.strip()]
-                if len(parts) == 3:
-                    return f"{parts[0].zfill(2)}/{parts[1].zfill(2)}/{parts[2]}"
+                return normalize_date(m.group(1))
+            # Check next line (e.g. "जन्म तिथि / DOB" on line i, "24/12/1990" on line i+1)
+            if i + 1 < len(lines) and not issue_keywords.search(lines[i + 1]):
+                m2 = date_pattern.search(lines[i + 1])
+                if m2:
+                    return normalize_date(m2.group(1))
+            # Check previous line
+            if i > 0 and not issue_keywords.search(lines[i - 1]):
+                m3 = date_pattern.search(lines[i - 1])
+                if m3:
+                    return normalize_date(m3.group(1))
 
-    # 2. Search entire text with DOB prefix
-    m_dob = re.search(r'(?:DOB|D0B|DO8|Date of Birth|जन्म[\s]*तिथि|जन्म[\s]*तारीख|D\.O\.B)[\s/:\-]*([0-3]?[0-9][/\-.\s][0-1]?[0-9][/\-.\s][12][0-9]{3})', text, re.I)
+    # 2. Search whole text for DOB pattern excluding lines with issue/enrolment
+    m_dob = re.search(
+        r'(?:DOB|D0B|DO8|Date of Birth|जन्म[\s]*तिथि|जन्म[\s]*तारीख|D\.O\.B)[\s/:\-]*([0-3]?[0-9][/\-.\s][0-1]?[0-9][/\-.\s][12][0-9]{3})',
+        text,
+        re.I
+    )
     if m_dob:
-        dob_str = re.sub(r'[.\-\s]', '/', m_dob.group(1))
-        parts = [p.strip() for p in dob_str.split('/') if p.strip()]
-        if len(parts) == 3:
-            return f"{parts[0].zfill(2)}/{parts[1].zfill(2)}/{parts[2]}"
+        return normalize_date(m_dob.group(1))
 
-    # 3. Fallback: match any valid standalone date (DD/MM/YYYY or DD-MM-YYYY)
-    dates = re.findall(r'\b([0-3][0-9][/\-.][0-1][0-9][/\-.][12][0-9]{3})\b', text)
-    if dates:
-        # Return the first matched date
-        d_str = re.sub(r'[.\-]', '/', dates[0])
-        return d_str
+    # 3. Candidate scan: collect all dates NOT on issue/enrolment lines
+    candidates = []
+    for line in lines:
+        if not issue_keywords.search(line):
+            for m in date_pattern.finditer(line):
+                d_cand = normalize_date(m.group(1))
+                candidates.append(d_cand)
+
+    if candidates:
+        # Prioritize dates where year is an adult birth year (<= 2010 if multiple candidates exist)
+        adult_dates = [c for c in candidates if int(c.split('/')[-1]) <= 2005]
+        if adult_dates:
+            return adult_dates[0]
+        return candidates[-1] if len(candidates) > 1 else candidates[0]
 
     # 4. Year of Birth only fallback
     m_yob = re.search(r'(?:Year of Birth|जन्म[\s]*वर्ष|YOB)[\s/:\-]*([12][0-9]{3})', text, re.I)
