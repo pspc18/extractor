@@ -77,12 +77,25 @@ def enhance_card_image(img: np.ndarray) -> np.ndarray:
     return sharpened
 
 
+def fix_ocr_digits(text: str) -> str:
+    """Fixes common OCR confusions between letters and numbers in date and ID contexts."""
+    if not text:
+        return ""
+    t = text.translate(DEVANAGARI_DIGITS)
+    # Fix letter O/o to 0 in dates (e.g. 199O -> 1990, 2O11 -> 2011)
+    t = re.sub(r'([0-9/.\-])[oO]([0-9/.\-]|\b)', r'\g<1>0\2', t)
+    t = re.sub(r'\b[oO]([0-9]{2,})', r'0\1', t)
+    # Fix letter I/l/| to 1 in dates (e.g. I990 -> 1990)
+    t = re.sub(r'([0-9/.\-])[lI|]([0-9/.\-]|\b)', r'\g<1>1\2', t)
+    t = re.sub(r'\b[lI]([0-9]{2,})', r'1\1', t)
+    return t
+
+
 def clean_spacing(text: str) -> str:
     """Inserts spaces in camelCase or merged words commonly caused by OCR."""
     if not text:
         return ""
-    # Convert Devanagari numerals to standard digits
-    t = text.translate(DEVANAGARI_DIGITS)
+    t = fix_ocr_digits(text)
     # Split camelCase
     t = re.sub(r'([a-z])([A-Z])', r'\1 \2', t)
     # Split between letters and numbers
