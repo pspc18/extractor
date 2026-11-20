@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Dynamic OMR Extractor | Instant JSON &amp; Live Table</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-950/60 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 font-bold text-lg">
+          <i class="fa-solid fa-brain"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
+            AI Dynamic OMR Extractor
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold uppercase tracking-wider">
+              Single &amp; Multi-Image
+            </span>
+          </h1>
+          <p class="text-xs text-slate-400">Intelligent Auto-Detection &bull; Exam Name &amp; Code OCR &bull; Live Real-Time Table</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2 text-xs text-slate-400">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>Engine Online</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-6xl mx-auto px-4 py-8 flex-1 w-full space-y-8">
+
+    <!-- Upload Card -->
+    <div class="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-6 shadow-xl backdrop-blur">
+      <form id="extract-form" onsubmit="handleExtract(event)" class="space-y-5">
+        
+        <!-- Drag & Drop Zone (Supports Single & Multiple Images) -->
+        <div id="dropzone" class="border-2 border-dashed border-slate-600 hover:border-emerald-400 bg-slate-900/50 hover:bg-emerald-950/10 rounded-xl p-8 text-center cursor-pointer transition relative group">
+          <input type="file" id="image-input" accept="image/*" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileChange(this.files)">
+          
+          <div id="dropzone-prompt" class="space-y-3">
+            <div class="w-14 h-14 mx-auto rounded-full bg-slate-800 group-hover:bg-emerald-500/10 text-slate-400 group-hover:text-emerald-400 flex items-center justify-center text-2xl transition border border-slate-700 group-hover:border-emerald-500/30">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+            </div>
+            <div>
+              <p class="text-sm font-semibold text-white">Click or drag &amp; drop OMR sheet image(s)</p>
+              <p class="text-xs text-slate-400 mt-1">Select 1 sheet or multiple sheets together (JPG, PNG, WebP) &bull; Any position or tilt</p>
+            </div>
+          </div>
+
+          <!-- Selected Preview (Single File) -->
+          <div id="selected-preview" class="hidden flex items-center justify-center gap-4">
+            <img id="preview-thumb" src="" alt="Thumbnail" class="w-16 h-20 object-cover rounded-lg border border-slate-600 shadow-md">
+            <div class="text-left">
+              <p class="text-sm font-bold text-white" id="selected-filename">filename.jpg</p>
+              <p class="text-xs text-emerald-400 font-medium" id="selected-filesize">0 KB</p>
+              <p class="text-[11px] text-slate-400 mt-1">Click to change file(s)</p>
+            </div>
+          </div>
+
+          <!-- Selected Preview (Multiple Files) -->
+          <div id="selected-preview-multiple" class="hidden flex flex-col items-center justify-center space-y-2">
+            <div class="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl font-bold">
+              <i class="fa-solid fa-layer-group"></i>
+            </div>
+            <div class="text-center">
+              <p class="text-sm font-bold text-white"><span id="multi-file-count" class="text-emerald-400">0</span> Sheets Selected</p>
+              <p class="text-xs text-slate-400 mt-0.5">Click "Extract OMR Data" to process all sheets in real-time</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Extract Button & Live Progress -->
+        <div class="flex flex-col items-center justify-center space-y-3">
+          <button type="submit" id="extract-btn" disabled class="px-8 py-3.5 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2.5">
+            <i class="fa-solid fa-bolt"></i>
+            <span id="btn-text">Extract OMR Data</span>
+          </button>
+          
+          <!-- Real-Time Progress Indicator -->
+          <div id="batch-progress-box" class="hidden text-xs text-emerald-400 font-medium flex items-center gap-2 bg-emerald-950/40 px-4 py-1.5 rounded-full border border-emerald-800/40">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span id="batch-progress-text">Processing sheets...</span>
+          </div>
+        </div>
+
+      </form>
+    </div>
+
+    <!-- Results Section (Single / Active Sheet Viewer) -->
+    <div id="results-card" class="hidden space-y-6">
+
+      <!-- Exam Metadata Bar (Exam Name, Exam Code, Org) -->
+      <div id="meta-banner" class="bg-gradient-to-r from-slate-800/90 to-slate-800/60 border border-slate-700/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-lg">
+        <div class="space-y-1">
+          <div class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold flex items-center gap-1.5">
+            <i class="fa-solid fa-building-columns text-emerald-400"></i> Organization / Institution
+          </div>
+          <div class="text-base font-bold text-white tracking-wide" id="res-org">Not detected</div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="bg-slate-900/80 border border-slate-700/60 px-4 py-2 rounded-xl">
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Exam Name</div>
+            <div class="text-sm font-bold font-mono text-emerald-300" id="res-exam-name">-</div>
+          </div>
+          <div class="bg-slate-900/80 border border-slate-700/60 px-4 py-2 rounded-xl">
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Exam Code</div>
+            <div class="text-sm font-bold font-mono text-teal-300" id="res-exam-code">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary KPI Row -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Roll Number</div>
+          <div class="text-xl font-bold font-mono text-emerald-400 mt-0.5" id="res-roll">-</div>
+        </div>
+        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Total Questions</div>
+          <div class="text-xl font-bold text-white mt-0.5" id="res-total">0</div>
+        </div>
+        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+          <div class="text-[11px] text-emerald-400 uppercase tracking-wider font-semibold">Attempted</div>
+          <div class="text-xl font-bold text-emerald-400 mt-0.5" id="res-attempted">0</div>
+        </div>
+        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Unattempted</div>
+          <div class="text-xl font-bold text-slate-300 mt-0.5" id="res-unattempted">0</div>
+        </div>
+        <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5">
+          <div class="text-[11px] text-amber-400 uppercase tracking-wider font-semibold">Status / Conf</div>
+          <div class="text-base font-bold text-white mt-1" id="res-status">-</div>
+        </div>
+      </div>
+
+      <!-- Split View: Visual Preview on Left, JSON on Right -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left: Visual Inspection Image (5 cols) -->
+        <div class="lg:col-span-5 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex flex-col">
+          <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-eye text-emerald-400"></i> Pixel-Centric Detection Overlay
+            </span>
+            <span class="text-[11px] text-slate-400">Green = Answer, Red = Multi</span>
+          </div>
+          <div class="flex-1 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center p-2 min-h-[450px]">
+            <img id="res-annotated-img" src="" alt="Annotated Sheet" class="max-h-[550px] w-auto object-contain rounded cursor-pointer hover:opacity-95 transition" onclick="openZoomModal()">
+          </div>
+        </div>
+
+        <!-- Right: JSON Viewer (7 cols) -->
+        <div class="lg:col-span-7 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex flex-col">
+          <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-code text-teal-400"></i> JSON Output (<span id="active-sheet-name" class="font-mono text-emerald-400">sheet</span>)
+            </span>
+            <div class="flex items-center space-x-2">
+              <button onclick="copyJson()" id="copy-btn" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
+                <i class="fa-regular fa-copy"></i> Copy JSON
+              </button>
+              <button onclick="downloadJson()" class="px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5">
+                <i class="fa-solid fa-download"></i> Download
+              </button>
+            </div>
+          </div>
+          <div class="flex-1 bg-slate-950 rounded-xl p-4 overflow-auto custom-scrollbar border border-slate-800 text-xs font-mono text-emerald-300 max-h-[550px]">
+            <pre id="json-display" class="select-all">{}</pre>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- REAL-TIME TABULAR RESULTS SECTION (MODULAR) -->
+    <!-- ========================================================================= -->
+    <div id="batch-table-container" class="hidden bg-slate-800/60 border border-slate-700/60 rounded-2xl overflow-hidden shadow-xl backdrop-blur">
+      <div class="p-4 border-b border-slate-700/60 flex flex-wrap items-center justify-between gap-3 bg-slate-950/40">
+        <div>
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-table-list text-emerald-400"></i> Extracted Sheets Table
+            <span id="table-count-badge" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">0</span>
+          </h2>
+          <p class="text-xs text-slate-400">Click any row to inspect its full JSON and visual overlay above</p>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+          <button onclick="exportTableToCsv()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
+            <i class="fa-solid fa-file-csv text-emerald-400"></i> Export CSV
+          </button>
+          <button onclick="exportAllToJson()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5">
+            <i class="fa-solid fa-file-code text-teal-400"></i> Export JSON
+          </button>
+          <button onclick="clearTable()" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-red-900/50 text-slate-400 hover:text-red-300 transition" title="Clear table">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto max-h-[450px] custom-scrollbar">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead class="sticky top-0 bg-slate-950/90 backdrop-blur z-10 border-b border-slate-700/70">
+            <tr class="text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+              <th class="p-3 w-12 text-center">#</th>
+              <th class="p-3">Filename</th>
+              <th class="p-3">Organization</th>
+              <th class="p-3">Exam Name</th>
+              <th class="p-3">Exam Code</th>
+              <th class="p-3">Roll Number</th>
+              <th class="p-3">Attempted / Total</th>
+              <th class="p-3">Status</th>
+              <th class="p-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="batch-table-body" class="divide-y divide-slate-700/50 text-slate-300">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Zoom Modal -->
+  <div id="zoom-modal" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center p-4 cursor-pointer" onclick="closeZoomModal()">
+    <img id="zoom-modal-img" src="" alt="Full view" class="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl">
+  </div>
+
+  <footer class="border-t border-slate-800/60 py-4 text-center text-xs text-slate-500">
+    AI Dynamic OMR Extractor &bull; Zero API Cost &bull; Instant Intelligence
+  </footer>
+
+  <script>
+    let currentRawJson = null;
+    let extractedSheetsList = [];
+    let selectedFiles = [];
+
+    function handleFileChange(files) {
+      if (!files || files.length === 0) return;
+      selectedFiles = Array.from(files);
+
+      document.getElementById("dropzone-prompt").classList.add("hidden");
+
+      if (selectedFiles.length === 1) {
+        document.getElementById("selected-preview-multiple").classList.add("hidden");
+        document.getElementById("selected-preview").classList.remove("hidden");
+
+        const file = selectedFiles[0];
+        document.getElementById("selected-filename").innerText = file.name;
+        document.getElementById("selected-filesize").innerText = (file.size / 1024).toFixed(1) + " KB";
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          document.getElementById("preview-thumb").src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        document.getElementById("selected-preview").classList.add("hidden");
+        document.getElementById("selected-preview-multiple").classList.remove("hidden");
+        document.getElementById("multi-file-count").innerText = selectedFiles.length;
+      }
+
+      document.getElementById("extract-btn").disabled = false;
+    }
+
+    async function handleExtract(e) {
+      e.preventDefault();
+      if (!selectedFiles || selectedFiles.length === 0) return;
+
+      const btn = document.getElementById("extract-btn");
+      const btnText = document.getElementById("btn-text");
+      const progressBox = document.getElementById("batch-progress-box");
+      const progressText = document.getElementById("batch-progress-text");
+
+      btn.disabled = true;
+      progressBox.classList.remove("hidden");
+
+      const total = selectedFiles.length;
+
+      for (let i = 0; i < total; i++) {
+        const file = selectedFiles[i];
+        btnText.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing ${i + 1} of ${total}...`;
+        progressText.innerText = `Extracting [${i + 1}/${total}]: ${file.name}`;
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+          const res = await fetch("/api/extract", {
+            method: "POST",
+            body: formData
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || "Extraction failed");
+          }
+
+          const data = await res.json();
+          currentRawJson = data;
+
+          // Add to stored list
+          extractedSheetsList.push(data);
+
+          // Update Top Viewer with latest extracted sheet
+          displayResults(data);
+
+          // Append row to Real-Time Table immediately
+          appendRowToTable(data, extractedSheetsList.length);
+
+        } catch (err) {
+          console.error(`Error processing ${file.name}:`, err);
+        }
+      }
+
+      btn.disabled = false;
+      btnText.innerHTML = `Extract OMR Data`;
+      progressBox.classList.add("hidden");
+    }
+
+    function displayResults(data) {
+      document.getElementById("results-card").classList.remove("hidden");
+
+      // Active sheet name
+      document.getElementById("active-sheet-name").innerText = data.filename || "sheet.jpg";
+
+      // Header Meta (Exam Name, Exam Code, Org)
+      document.getElementById("res-org").innerText = data.organization || "Detected OMR Sheet";
+      document.getElementById("res-exam-name").innerText = data.exam_name || "N/A";
+      document.getElementById("res-exam-code").innerText = data.exam_code || "N/A";
+
+      // KPI row
+      document.getElementById("res-roll").innerText = data.roll_number || "AUTO";
+      document.getElementById("res-total").innerText = data.summary.total_questions;
+      document.getElementById("res-attempted").innerText = data.summary.attempted;
+      document.getElementById("res-unattempted").innerText = data.summary.unattempted;
+      document.getElementById("res-status").innerHTML = `<span class="text-emerald-400 font-bold">${data.status}</span> <span class="text-xs text-slate-400">(${(data.confidence * 100).toFixed(1)}%)</span>`;
+
+      // Visual Image
+      const imgElem = document.getElementById("res-annotated-img");
+      imgElem.src = `${data.annotated_image_url}?t=${Date.now()}`;
+      document.getElementById("zoom-modal-img").src = imgElem.src;
+
+      // JSON Code Block
+      document.getElementById("json-display").innerText = JSON.stringify(data, null, 2);
+    }
+
+    function appendRowToTable(data, index) {
+      const container = document.getElementById("batch-table-container");
+      container.classList.remove("hidden");
+
+      document.getElementById("table-count-badge").innerText = extractedSheetsList.length;
+
+      const tbody = document.getElementById("batch-table-body");
+      const tr = document.createElement("tr");
+      tr.className = "hover:bg-slate-800/80 transition cursor-pointer";
+      tr.onclick = () => {
+        currentRawJson = data;
+        displayResults(data);
+        document.getElementById("results-card").scrollIntoView({ behavior: "smooth" });
+      };
+
+      tr.innerHTML = `
+        <td class="p-3 text-center text-slate-500 font-mono">${index}</td>
+        <td class="p-3 font-semibold text-white flex items-center gap-1.5">
+          <i class="fa-regular fa-file-image text-emerald-400"></i> ${data.filename}
+        </td>
+        <td class="p-3 text-slate-300 font-medium">${data.organization || '<span class="text-slate-500">-</span>'}</td>
+        <td class="p-3 font-mono text-emerald-300">${data.exam_name || '<span class="text-slate-500">-</span>'}</td>
+        <td class="p-3 font-mono text-teal-300">${data.exam_code || '<span class="text-slate-500">-</span>'}</td>
+        <td class="p-3 font-mono font-bold text-emerald-400">${data.roll_number}</td>
+        <td class="p-3 font-semibold text-slate-200">${data.summary.attempted} / ${data.summary.total_questions}</td>
+        <td class="p-3">
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            ${data.status}
+          </span>
+        </td>
+        <td class="p-3 text-right">
+          <button class="px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white font-medium text-[11px] transition">
+            View <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-slate-400"></i>
+          </button>
+        </td>
+      `;
+
+      tbody.appendChild(tr);
+    }
+
+    function copyJson() {
+      if (!currentRawJson) return;
+      navigator.clipboard.writeText(JSON.stringify(currentRawJson, null, 2)).then(() => {
+        const btn = document.getElementById("copy-btn");
+        btn.innerHTML = `<i class="fa-solid fa-check text-emerald-400"></i> Copied!`;
+        setTimeout(() => {
+          btn.innerHTML = `<i class="fa-regular fa-copy"></i> Copy JSON`;
+        }, 2000);
+      });
+    }
+
+    function downloadJson() {
+      if (!currentRawJson) return;
+      const str = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentRawJson, null, 2));
+      const a = document.createElement("a");
+      a.setAttribute("href", str);
+      a.setAttribute("download", `${currentRawJson.filename || 'omr_result'}.json`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function exportAllToJson() {
+      if (extractedSheetsList.length === 0) return alert("Table is empty.");
+      const str = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(extractedSheetsList, null, 2));
+      const a = document.createElement("a");
+      a.setAttribute("href", str);
+      a.setAttribute("download", `all_omr_results_${Date.now()}.json`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function exportTableToCsv() {
+      if (extractedSheetsList.length === 0) return alert("Table is empty.");
+      
+      let csvContent = "data:text/csv;charset=utf-8,";
+      // Header
+      csvContent += "Filename,Organization,Exam Name,Exam Code,Roll Number,Total Questions,Attempted,Unattempted,Multiple Marked,Status\r\n";
+
+      extractedSheetsList.forEach(item => {
+        const row = [
+          `"${item.filename}"`,
+          `"${item.organization || ''}"`,
+          `"${item.exam_name || ''}"`,
+          `"${item.exam_code || ''}"`,
+          `"${item.roll_number || ''}"`,
+          item.summary.total_questions,
+          item.summary.attempted,
+          item.summary.unattempted,
+          item.summary.multiple_marked,
+          item.status
+        ];
+        csvContent += row.join(",") + "\r\n";
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `omr_batch_table_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    function clearTable() {
+      if (!confirm("Clear extracted sheets table?")) return;
+      extractedSheetsList = [];
+      document.getElementById("batch-table-body").innerHTML = "";
+      document.getElementById("table-count-badge").innerText = "0";
+      document.getElementById("batch-table-container").classList.add("hidden");
+    }
+
+    function openZoomModal() {
+      document.getElementById("zoom-modal").classList.remove("hidden");
+    }
+
+    function closeZoomModal() {
+      document.getElementById("zoom-modal").classList.add("hidden");
+    }
+  </script>
+</body>
+</html>
