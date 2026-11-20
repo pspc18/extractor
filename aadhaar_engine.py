@@ -96,6 +96,8 @@ def clean_spacing(text: str) -> str:
     if not text:
         return ""
     t = fix_ocr_digits(text)
+    # Normalize spaced DOB like "D 0 B" or "D O B" to "DOB"
+    t = re.sub(r'[Dd]\s+[0oO8]\s+[Bb]', 'DOB', t)
     # Split camelCase
     t = re.sub(r'([a-z])([A-Z])', r'\1 \2', t)
     # Split between letters and numbers
@@ -156,27 +158,27 @@ def extract_dob(text: str, lines: List[str]) -> Optional[str]:
     """
     Intelligent Date of Birth extractor.
     - Matches DOB keywords across same line, next line (label above date), or previous line.
-    - Ignores Issue / Enrollment / Generation dates (e.g. Enrollment timestamps like 23/12/2011).
-    - Prioritizes true birth years.
+    - Handles 'D 0 B', 'D O B', 'DOB', '可fa/D 0 B', etc.
+    - Ignores Issue / Enrollment / Generation dates (e.g. 'Aadhaarno.issued:23/12/2011').
     """
     dob_keywords = re.compile(
-        r'(?:DOB|D\.?O\.?B\.?|D0B|DO8|Date\s*of\s*Birth|जन्म[\s\-/]*तिथि|जन्म[\s\-/]*तारीख|जन्म[\s\-/]*दिनांक)',
+        r'(?:DOB|D\s*[0oO8\.]\s*B|D\.?O\.?B\.?|D0B|DO8|Date\s*of\s*Birth|जन्म|दिनांक|तारीख)',
         re.I
     )
     date_pattern = re.compile(r'([0-3]?[0-9][/\-.\s][0-1]?[0-9][/\-.\s][12][0-9]{3})')
     issue_keywords = re.compile(
-        r'(?:Issue|Download|Enrolment|Enrollment|Generated|Print|Valid|जारी|नामांकन)',
+        r'(?:Issue|Issued|Download|Enrolment|Enrollment|Generated|Print|Valid|जारी|नामांकन)',
         re.I
     )
 
     # 1. Proximity check on lines containing DOB keywords
     for i, line in enumerate(lines):
         if dob_keywords.search(line) and not issue_keywords.search(line):
-            # Check current line
+            # Check current line (e.g. '可fa/D 0 B:24/12/1990')
             m = date_pattern.search(line)
             if m:
                 return normalize_date(m.group(1))
-            # Check next line (e.g. "जन्म तिथि / DOB" on line i, "24/12/1990" on line i+1)
+            # Check next line (e.g. 'जन्म तिथि / DOB' on line i, '24/12/1990' on line i+1)
             if i + 1 < len(lines) and not issue_keywords.search(lines[i + 1]):
                 m2 = date_pattern.search(lines[i + 1])
                 if m2:
@@ -189,7 +191,7 @@ def extract_dob(text: str, lines: List[str]) -> Optional[str]:
 
     # 2. Search whole text for DOB pattern excluding lines with issue/enrolment
     m_dob = re.search(
-        r'(?:DOB|D0B|DO8|Date of Birth|जन्म[\s]*तिथि|जन्म[\s]*तारीख|D\.O\.B)[\s/:\-]*([0-3]?[0-9][/\-.\s][0-1]?[0-9][/\-.\s][12][0-9]{3})',
+        r'(?:DOB|D\s*[0oO8\.]\s*B|D\.?O\.?B\.?|Date of Birth|जन्म|तारीख)[\s/:\-]*([0-3]?[0-9][/\-.\s][0-1]?[0-9][/\-.\s][12][0-9]{3})',
         text,
         re.I
     )
@@ -205,11 +207,7 @@ def extract_dob(text: str, lines: List[str]) -> Optional[str]:
                 candidates.append(d_cand)
 
     if candidates:
-        # Prioritize dates where year is an adult birth year (<= 2010 if multiple candidates exist)
-        adult_dates = [c for c in candidates if int(c.split('/')[-1]) <= 2005]
-        if adult_dates:
-            return adult_dates[0]
-        return candidates[-1] if len(candidates) > 1 else candidates[0]
+        return candidates[0]
 
     # 4. Year of Birth only fallback
     m_yob = re.search(r'(?:Year of Birth|जन्म[\s]*वर्ष|YOB)[\s/:\-]*([12][0-9]{3})', text, re.I)
