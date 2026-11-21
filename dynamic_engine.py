@@ -315,7 +315,7 @@ def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[st
             cv2.putText(annotated, ans_char, (int(opt_xs[-1] + 16), qy + 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 180, 0), 1, cv2.LINE_AA)
         else:
-            answers[str(q)] = None
+            answers[str(q)] = ""
 
     unattempted = 50 - attempted - multiple_marked
 
@@ -407,7 +407,7 @@ def extract_1200x1600(image: np.ndarray, detected_corners: np.ndarray) -> Dict[s
             cv2.circle(annotated, (ex_x, ex_y), 13, (0, 210, 0), 2, cv2.LINE_AA)
             cv2.putText(annotated, ans_char, (opt_xs[-1] + 18, qy + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 180, 0), 1)
         else:
-            answers[str(q_num)] = None
+            answers[str(q_num)] = ""
 
     unattempted = 50 - attempted - multiple_marked
 
@@ -502,7 +502,7 @@ def extract_universal_dynamic(image: np.ndarray) -> Dict[str, Any]:
             cv2.putText(annotated, ans_char, (int(round(opts[-1][0])) + 15, qy + 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 180, 0), 1)
         else:
-            answers[str(q_num)] = None
+            answers[str(q_num)] = ""
 
     total_q = len(rows)
     unattempted = total_q - attempted - multiple_marked
@@ -561,6 +561,9 @@ def process_dynamic_omr(
     ret, buf = cv2.imencode('.jpg', res["annotated_image"], [cv2.IMWRITE_JPEG_QUALITY, 85])
     annotated_base64 = f"data:image/jpeg;base64,{base64.b64encode(buf.tobytes()).decode('utf-8')}" if ret else None
 
+    # Clean attempted_answers containing ONLY attempted questions (e.g. {"1": "C", "3": "B", ...})
+    attempted_only = {str(k): v for k, v in res["answers"].items() if v and v != "MULTIPLE"}
+
     return {
         "success": True,
         "filename": filename,
@@ -572,6 +575,7 @@ def process_dynamic_omr(
         "roll_number": res["roll_number"],
         "summary": res["summary"],
         "answers": res["answers"],
+        "attempted_answers": attempted_only,
         "annotated_image_url": f"/debug_images/{annotated_filename}",
         "annotated_image_base64": annotated_base64
     }
