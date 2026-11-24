@@ -443,6 +443,192 @@ def calibrate_questions_800(gray: np.ndarray) -> Tuple[List[float], float, List[
     return l_xs, l_y0, r_xs, r_y0
 
 
+def detect_question_layout_800(
+    aligned: np.ndarray,
+    gray: np.ndarray,
+    ocr_engine: Any = None
+) -> Tuple[int, int, int]:
+    """
+    Dynamically determines total questions and column layout on 800x1100 canvas.
+    Fuses:
+    1. Question Header OCR (e.g. 'ANSWERS — 10 QUESTIONS', 'QUESTIONS 1-10', 'QUESTIONS 26-50')
+    2. Geometric Bubble Edge Verification (evaluates printed circle boundaries per row in Left & Right blocks)
+
+    Returns: (total_questions, left_column_count, right_column_count)
+    """
+    h, w = gray.shape
+    ocr_total = None
+
+    # 1. OCR in Question Header band (y between 38% and 49% of sheet height)
+    if ocr_engine is not None:
+        q_header = aligned[int(h * 0.38):int(h * 0.49), :]
+        try:
+            res, _ = ocr_engine(q_header)
+            if res:
+                for line in res:
+                    s = line[1].strip()
+                    # e.g. ANSWERS - 10 QUESTIONS, ANSWERS-5O QUESTIONS, RS-100 QUESTIONS
+                    m = re.search(r'(?:ANSWERS|ANS|RS)?\s*[-—–:.]*\s*([0-9OISB]{2,3})\s*QUEST', s, re.IGNORECASE)
+                    if m:
+                        val = m.group(1).upper().replace('O', '0').replace('I', '1').replace('S', '5').replace('B', '8')
+                        if val.isdigit():
+                            c_val = int(val)
+                            if 5 <= c_val <= 200:
+                                ocr_total = c_val
+                                break
+                    # e.g. QUESTIONS 1 - 10, QUESTIONS 26 - 50, ESTIONS 1-25
+                    m2 = re.findall(r'(?:QUEST|EST)[A-Z]*\s*([0-9]+)\s*[-—–:.]+\s*([0-9OISB]+)', s, re.IGNORECASE)
+                    if m2:
+                        for sq, eq in m2:
+                            val = eq.upper().replace('O', '0').replace('I', '1').replace('S', '5').replace('B', '8')
+                            if val.isdigit():
+                                cand = int(val)
+                                if 5 <= cand <= 200:
+                                    if ocr_total is None or cand > ocr_total:
+                                        ocr_total = cand
+        except Exception:
+            pass
+
+    # 2. Geometric Bubble Edge Presence Verification
+    left_opts_x = [118.5, 144.5, 170.5, 196.5]
+    right_opts_x = [285.5, 311.5, 337.5, 363.5]
+
+    counts = {}
+    for col_name, opts_x in [('Left', left_opts_x), ('Right', right_opts_x)]:
+        active_rows = 0
+        for r in range(25):
+            qy = int(round(484.0 + r * 21.7))
+            row_has_bubble = False
+            for ox in opts_x:
+                ix, iy = int(round(ox)), qy
+                patch = gray[iy - 7:iy + 8, ix - 7:ix + 8]
+                if patch.shape[0] == 15 and patch.shape[1] == 15:
+                    edges = cv2.Canny(patch, 50, 150)
+                    if np.sum(edges > 0) >= 6 or np.std(patch) >= 14:
+                        row_has_bubble = True
+                        break
+            if row_has_bubble:
+                active_rows = r + 1
+        counts[col_name] = active_rows
+
+    left_rows = counts['Left']
+    right_rows = counts['Right']
+
+    if right_rows == 0:
+        geom_total = left_rows
+    else:
+        geom_total = left_rows + right_rows
+
+    # 3. Consensus Decision
+    if ocr_total is not None:
+        if right_rows == 0 and ocr_total <= 25:
+            total = ocr_total
+        elif right_rows > 0 and abs(ocr_total - geom_total) <= 3:
+            total = ocr_total
+        elif geom_total > 0 and abs(ocr_total - geom_total) <= 2:
+            total = ocr_total
+        else:
+            total = ocr_total if (ocr_total in [10, 20, 25, 50, 100]) else (geom_total if geom_total > 0 else 50)
+    elif geom_total > 0:
+        total = geom_total
+    else:
+        total = 50
+
+    if right_rows == 0 or total <= 25:
+        return total, total, 0
+    else:
+        l_cnt = 25
+        r_cnt = total - l_cnt
+        return total, l_cnt, r_cnt
+
+
+def detect_question_layout_1200(
+    aligned: np.ndarray,
+    gray: np.ndarray,
+    ocr_engine: Any = None
+) -> Tuple[int, int, int]:
+    """
+    Dynamically determines total questions and column layout on 1200x1600 canvas.
+    """
+    h, w = gray.shape
+    ocr_total = None
+
+    if ocr_engine is not None:
+        q_header = aligned[int(h * 0.38):int(h * 0.49), :]
+        try:
+            res, _ = ocr_engine(q_header)
+            if res:
+                for line in res:
+                    s = line[1].strip()
+                    m = re.search(r'(?:ANSWERS|ANS|RS)?\s*[-—–:.]*\s*([0-9OISB]{2,3})\s*QUEST', s, re.IGNORECASE)
+                    if m:
+                        val = m.group(1).upper().replace('O', '0').replace('I', '1').replace('S', '5').replace('B', '8')
+                        if val.isdigit() and 5 <= int(val) <= 200:
+                            ocr_total = int(val)
+                            break
+                    m2 = re.findall(r'(?:QUEST|EST)[A-Z]*\s*([0-9]+)\s*[-—–:.]+\s*([0-9OISB]+)', s, re.IGNORECASE)
+                    if m2:
+                        for sq, eq in m2:
+                            val = eq.upper().replace('O', '0').replace('I', '1').replace('S', '5').replace('B', '8')
+                            if val.isdigit():
+                                cand = int(val)
+                                if 5 <= cand <= 200:
+                                    if ocr_total is None or cand > ocr_total:
+                                        ocr_total = cand
+        except Exception:
+            pass
+
+    left_opts_x = [230, 290, 350, 410]
+    right_opts_x = [820, 880, 940, 1000]
+
+    counts = {}
+    for col_name, opts_x in [('Left', left_opts_x), ('Right', right_opts_x)]:
+        active_rows = 0
+        for r in range(25):
+            qy = 770 + r * 30
+            row_has_bubble = False
+            for ox in opts_x:
+                ix, iy = int(round(ox)), qy
+                patch = gray[iy - 10:iy + 11, ix - 10:ix + 11]
+                if patch.shape[0] == 21 and patch.shape[1] == 21:
+                    edges = cv2.Canny(patch, 50, 150)
+                    if np.sum(edges > 0) >= 10 or np.std(patch) >= 14:
+                        row_has_bubble = True
+                        break
+            if row_has_bubble:
+                active_rows = r + 1
+        counts[col_name] = active_rows
+
+    left_rows = counts['Left']
+    right_rows = counts['Right']
+
+    if right_rows == 0:
+        geom_total = left_rows
+    else:
+        geom_total = left_rows + right_rows
+
+    if ocr_total is not None:
+        if right_rows == 0 and ocr_total <= 25:
+            total = ocr_total
+        elif right_rows > 0 and abs(ocr_total - geom_total) <= 3:
+            total = ocr_total
+        elif geom_total > 0 and abs(ocr_total - geom_total) <= 2:
+            total = ocr_total
+        else:
+            total = ocr_total if (ocr_total in [10, 20, 25, 50, 100]) else (geom_total if geom_total > 0 else 50)
+    elif geom_total > 0:
+        total = geom_total
+    else:
+        total = 50
+
+    if right_rows == 0 or total <= 25:
+        return total, total, 0
+    else:
+        l_cnt = 25
+        r_cnt = total - l_cnt
+        return total, l_cnt, r_cnt
+
+
 def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[str, Any]:
     targets = np.float32([[48, 48], [752, 48], [48, 1052], [752, 1052]])
     M = cv2.getPerspectiveTransform(detected_corners, targets)
@@ -475,20 +661,21 @@ def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[st
 
     roll_number = "".join(roll_digits)
 
-    # 2. 50 Questions (Left: Q1-25, Right: Q26-50)
+    # 2. Dynamic Questions Layout Detection (supports 10, 20, 25, 50, etc. questions)
+    total_questions, left_q_count, right_q_count = detect_question_layout_800(aligned, gray, _ocr_engine)
     left_opts_x, y0_l, right_opts_x, y0_r = calibrate_questions_800(gray)
 
     answers: Dict[str, Optional[str]] = {}
     attempted = 0
     multiple_marked = 0
 
-    for q in range(1, 51):
-        if q <= 25:
+    for q in range(1, total_questions + 1):
+        if q <= left_q_count:
             row = q - 1
             opt_xs = left_opts_x
             qy = round(y0_l + row * 21.7)
         else:
-            row = q - 26
+            row = q - left_q_count - 1
             opt_xs = right_opts_x
             qy = round(y0_r + row * 21.7)
 
@@ -519,11 +706,11 @@ def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[st
         else:
             answers[str(q)] = ""
 
-    unattempted = 50 - attempted - multiple_marked
+    unattempted = total_questions - attempted - multiple_marked
 
     # Annotate Header Banner
     cv2.rectangle(annotated, (0, 0), (800, 32), (20, 20, 20), -1)
-    cv2.putText(annotated, f"Roll: {roll_number} | Questions: 50 | Attempted: {attempted} | Unattempted: {unattempted}",
+    cv2.putText(annotated, f"Roll: {roll_number} | Questions: {total_questions} | Attempted: {attempted} | Unattempted: {unattempted}",
                 (15, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (255, 255, 255), 1, cv2.LINE_AA)
 
     return {
@@ -531,7 +718,7 @@ def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[st
         "confidence": 0.99,
         "roll_number": roll_number,
         "summary": {
-            "total_questions": 50,
+            "total_questions": total_questions,
             "attempted": attempted,
             "unattempted": unattempted,
             "multiple_marked": multiple_marked
@@ -573,19 +760,20 @@ def extract_1200x1600(image: np.ndarray, detected_corners: np.ndarray) -> Dict[s
 
     roll_number = "".join(roll_digits)
 
+    # 2. Dynamic Questions Layout Detection (supports 10, 20, 25, 50, etc. questions)
+    total_questions, left_q_count, right_q_count = detect_question_layout_1200(aligned, gray, _ocr_engine)
     left_opts_x = [230, 290, 350, 410]
     right_opts_x = [820, 880, 940, 1000]
     answers: Dict[str, Optional[str]] = {}
     attempted = 0
     multiple_marked = 0
 
-    for q_idx in range(50):
-        q_num = q_idx + 1
-        if q_idx < 25:
-            row = q_idx
+    for q in range(1, total_questions + 1):
+        if q <= left_q_count:
+            row = q - 1
             opt_xs = left_opts_x
         else:
-            row = q_idx - 25
+            row = q - left_q_count - 1
             opt_xs = right_opts_x
         qy = 740 + 30 + row * 30
 
@@ -598,23 +786,23 @@ def extract_1200x1600(image: np.ndarray, detected_corners: np.ndarray) -> Dict[s
         diff = best_sc - sec_sc
 
         if best_sc >= 0.35 and sec_sc >= 0.30 and diff < 0.12:
-            answers[str(q_num)] = "MULTIPLE"
+            answers[str(q)] = "MULTIPLE"
             multiple_marked += 1
             cv2.rectangle(annotated, (opt_xs[0] - 15, qy - 12), (opt_xs[-1] + 15, qy + 12), (0, 0, 255), 2)
         elif best_sc >= 0.28 and diff >= 0.12:
             ans_char = OPTIONS[best_idx]
-            answers[str(q_num)] = ans_char
+            answers[str(q)] = ans_char
             attempted += 1
             ex_x, ex_y = find_exact_bubble_centroid(gray, opt_xs[best_idx], qy)
             cv2.circle(annotated, (ex_x, ex_y), 13, (0, 210, 0), 2, cv2.LINE_AA)
             cv2.putText(annotated, ans_char, (opt_xs[-1] + 18, qy + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 180, 0), 1)
         else:
-            answers[str(q_num)] = ""
+            answers[str(q)] = ""
 
-    unattempted = 50 - attempted - multiple_marked
+    unattempted = total_questions - attempted - multiple_marked
 
     cv2.rectangle(annotated, (0, 0), (1200, 42), (20, 20, 20), -1)
-    cv2.putText(annotated, f"Roll: {roll_number} | Questions: 50 | Attempted: {attempted} | Unattempted: {unattempted}",
+    cv2.putText(annotated, f"Roll: {roll_number} | Questions: {total_questions} | Attempted: {attempted} | Unattempted: {unattempted}",
                 (20, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA)
 
     return {
@@ -622,7 +810,7 @@ def extract_1200x1600(image: np.ndarray, detected_corners: np.ndarray) -> Dict[s
         "confidence": 0.985,
         "roll_number": roll_number,
         "summary": {
-            "total_questions": 50,
+            "total_questions": total_questions,
             "attempted": attempted,
             "unattempted": unattempted,
             "multiple_marked": multiple_marked
