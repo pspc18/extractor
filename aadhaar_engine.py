@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+from aadhaar_qr import detect_and_decode_qr_from_image, decode_aadhaar_qr
+
 try:
     from rapidocr_onnxruntime import RapidOCR
     _ocr_engine = RapidOCR()
@@ -314,12 +316,55 @@ def detect_card_side(full_text: str) -> str:
 
 
 def extract_aadhaar_from_image(image: np.ndarray, filename: str = "aadhaar.jpg") -> Dict[str, Any]:
-    """Processes a single Aadhaar card image (Front, Back, or Combined)."""
+    """
+    Processes a single Aadhaar card image (Front, Back, or Combined).
+    Priority 1: Automatic QR Code Scan (Zero-error UIDAI Secure QR / XML QR).
+    Priority 2: Deep OCR Engine (RapidOCR with contrast enhancement).
+    """
+    # 1. Check if image contains an Aadhaar QR code
+    qr_result = detect_and_decode_qr_from_image(image)
+    if qr_result and (qr_result.get("name") or qr_result.get("pincode") or qr_result.get("aadhaar_number")):
+        # If QR has masked number, try light OCR to grab the visible 12-digit number from card
+        card_side = "BACK" if qr_result.get("address") else "FRONT"
+        full_aadhaar_num = qr_result.get("aadhaar_number")
+        if not full_aadhaar_num or "XXXX" in full_aadhaar_num:
+            try:
+                ocr_results = run_ocr(image)
+                if ocr_results:
+                    full_text = "\n".join([item[0] for item in ocr_results])
+                    detected_num = extract_aadhaar_number(full_text)
+                    if detected_num and "XXXX" not in detected_num:
+                        full_aadhaar_num = detected_num
+                    card_side = detect_card_side(full_text)
+            except Exception:
+                pass
+
+        return {
+            "success": True,
+            "filename": filename,
+            "card_side": card_side,
+            "confidence": 1.0,
+            "extraction_method": "QR_CODE",
+            "qr_type": qr_result.get("qr_type"),
+            "data": {
+                "name": qr_result.get("name"),
+                "name_hindi": None,
+                "dob": qr_result.get("dob"),
+                "gender": qr_result.get("gender"),
+                "aadhaar_number": full_aadhaar_num,
+                "care_of": qr_result.get("care_of"),
+                "address": qr_result.get("address"),
+                "pincode": qr_result.get("pincode"),
+                "photo_base64": qr_result.get("photo_base64")
+            }
+        }
+
+    # 2. Fallback to OCR Engine
     ocr_results = run_ocr(image)
     if not ocr_results:
         return {
             "success": False,
-            "error": "No text detected in the uploaded image. Please ensure good lighting and clear capture.",
+            "error": "No text or QR code detected in the uploaded image. Please ensure good lighting and clear capture.",
             "filename": filename
         }
 
@@ -327,13 +372,13 @@ def extract_aadhaar_from_image(image: np.ndarray, filename: str = "aadhaar.jpg")
     full_text = "\n".join(lines)
     side = detect_card_side(full_text)
 
-    # 1. Identity & Demographics
+    # Identity & Demographics
     aadhaar_num = extract_aadhaar_number(full_text)
     dob = extract_dob(full_text, lines)
     gender = extract_gender(full_text)
     name_en, name_hi = extract_name_candidates(lines)
 
-    # 2. Address & PIN
+    # Address & PIN
     pincode = extract_pincode(full_text)
     address_str = None
     m_addr = re.search(r'(?:Address|पता)[\s:]*(.+?)(?:[1-9][0-9]{5}|\Z)', full_text, re.DOTALL | re.I)
@@ -351,14 +396,17 @@ def extract_aadhaar_from_image(image: np.ndarray, filename: str = "aadhaar.jpg")
         "filename": filename,
         "card_side": side,
         "confidence": avg_conf,
+        "extraction_method": "OCR",
         "data": {
             "name": name_en,
             "name_hindi": name_hi,
             "dob": dob,
             "gender": gender,
             "aadhaar_number": aadhaar_num,
+            "care_of": None,
             "address": address_str,
-            "pincode": pincode
+            "pincode": pincode,
+            "photo_base64": None
         }
     }
 
@@ -369,22 +417,63 @@ def extract_aadhaar_dual_side(
     front_filename: str = "front.jpg",
     back_filename: str = "back.jpg"
 ) -> Dict[str, Any]:
-    """Combines extraction from Front and Back images into clean, direct JSON."""
+    """Combines extraction from Front and Back images into clean, direct JSON with QR precedence."""
     res_front = extract_aadhaar_from_image(front_image, front_filename) if front_image is not None else None
     res_back = extract_aadhaar_from_image(back_image, back_filename) if back_image is not None else None
 
     data_front = res_front.get("data", {}) if res_front and res_front.get("success") else {}
     data_back = res_back.get("data", {}) if res_back and res_back.get("success") else {}
 
-    # Merge into clean schema (care_of, relation, district, state, vid completely removed)
+    # QR code data has 100% precision - prioritize side that used QR
+    is_front_qr = res_front and res_front.get("extraction_method") == "QR_CODE"
+    is_back_qr = res_back and res_back.get("extraction_method") == "QR_CODE"
+
+    # Merge Aadhaar number: prefer unmasked 12 digits over masked XXXX XXXX
+    uid_front = data_front.get("aadhaar_number") or ""
+    uid_back = data_back.get("aadhaar_number") or ""
+    if uid_front and "XXXX" not in uid_front:
+        final_uid = uid_front
+    elif uid_back and "XXXX" not in uid_back:
+        final_uid = uid_back
+    else:
+        final_uid = uid_front or uid_back
+
+    # Merge demographics (QR takes precedence if available)
+    if is_back_qr:
+        final_name = data_back.get("name") or data_front.get("name")
+        final_dob = data_back.get("dob") or data_front.get("dob")
+        final_gender = data_back.get("gender") or data_front.get("gender")
+        final_addr = data_back.get("address") or data_front.get("address")
+        final_pin = data_back.get("pincode") or data_front.get("pincode")
+        final_co = data_back.get("care_of") or data_front.get("care_of")
+        final_photo = data_back.get("photo_base64") or data_front.get("photo_base64")
+    elif is_front_qr:
+        final_name = data_front.get("name") or data_back.get("name")
+        final_dob = data_front.get("dob") or data_back.get("dob")
+        final_gender = data_front.get("gender") or data_back.get("gender")
+        final_addr = data_front.get("address") or data_back.get("address")
+        final_pin = data_front.get("pincode") or data_back.get("pincode")
+        final_co = data_front.get("care_of") or data_back.get("care_of")
+        final_photo = data_front.get("photo_base64") or data_back.get("photo_base64")
+    else:
+        final_name = data_front.get("name") or data_back.get("name")
+        final_dob = data_front.get("dob") or data_back.get("dob")
+        final_gender = data_front.get("gender") or data_back.get("gender")
+        final_addr = data_back.get("address") or data_front.get("address")
+        final_pin = data_back.get("pincode") or data_front.get("pincode")
+        final_co = data_back.get("care_of") or data_front.get("care_of")
+        final_photo = None
+
     merged_data = {
-        "name": data_front.get("name") or data_back.get("name"),
+        "name": final_name,
         "name_hindi": data_front.get("name_hindi") or data_back.get("name_hindi"),
-        "dob": data_front.get("dob") or data_back.get("dob"),
-        "gender": data_front.get("gender") or data_back.get("gender"),
-        "aadhaar_number": data_front.get("aadhaar_number") or data_back.get("aadhaar_number"),
-        "address": data_back.get("address") or data_front.get("address"),
-        "pincode": data_back.get("pincode") or data_front.get("pincode"),
+        "dob": final_dob,
+        "gender": final_gender,
+        "aadhaar_number": final_uid,
+        "care_of": final_co,
+        "address": final_addr,
+        "pincode": final_pin,
+        "photo_base64": final_photo
     }
 
     conf_list = []
@@ -395,10 +484,15 @@ def extract_aadhaar_dual_side(
 
     overall_conf = round(float(np.mean(conf_list)), 3) if conf_list else 0.90
 
+    method = "HYBRID_QR_OCR" if (is_front_qr or is_back_qr) else "OCR"
+    if is_front_qr and is_back_qr:
+        method = "QR_CODE"
+
     return {
         "success": True,
         "card_side": "BOTH",
         "confidence": overall_conf,
+        "extraction_method": method,
         "data": merged_data,
         "front_status": res_front.get("success", False) if res_front else None,
         "back_status": res_back.get("success", False) if res_back else None

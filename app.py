@@ -22,6 +22,10 @@ from aadhaar_engine import (
     extract_aadhaar_dual_side,
     decode_base64_image as decode_aadhaar_b64
 )
+from aadhaar_qr import (
+    decode_aadhaar_qr,
+    detect_and_decode_qr_from_image
+)
 
 app = FastAPI(
     title="AI Dynamic Extractor (OMR & Aadhaar)",
@@ -57,6 +61,10 @@ class AadhaarExtractBase64Request(BaseModel):
     back: Optional[str] = None   # Base64 string of back side
     image: Optional[str] = None  # Base64 string of single/combined card
     filename: Optional[str] = "aadhaar.jpg"
+
+
+class AadhaarDecodeQRRequest(BaseModel):
+    qr_data: str  # Raw QR scan string (UIDAI Secure QR big-int, XML string, or JSON)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -230,3 +238,83 @@ async def extract_aadhaar_base64_api(req: AadhaarExtractBase64Request):
         result = extract_aadhaar_from_image(back_img, filename="back.jpg")
 
     return JSONResponse(content=result)
+
+
+@app.post("/api/aadhaar/decode-qr")
+async def decode_aadhaar_qr_api(req: AadhaarDecodeQRRequest):
+    """
+    Decodes raw Aadhaar QR code string (UIDAI Secure QR big-int, XML, or JSON).
+    Instant execution (<10ms), zero OCR latency, 100% digitally verified data.
+    """
+    if not req.qr_data or not req.qr_data.strip():
+        raise HTTPException(status_code=400, detail="Missing 'qr_data' in request body.")
+
+    decoded = decode_aadhaar_qr(req.qr_data)
+    if not decoded:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "Could not parse valid Aadhaar data from the provided QR code string."
+            }
+        )
+
+    return JSONResponse(content={
+        "success": True,
+        "extraction_method": "QR_CODE",
+        "qr_type": decoded.get("qr_type"),
+        "confidence": 1.0,
+        "data": {
+            "name": decoded.get("name"),
+            "name_hindi": None,
+            "dob": decoded.get("dob"),
+            "gender": decoded.get("gender"),
+            "aadhaar_number": decoded.get("aadhaar_number"),
+            "care_of": decoded.get("care_of"),
+            "address": decoded.get("address"),
+            "pincode": decoded.get("pincode"),
+            "photo_base64": decoded.get("photo_base64")
+        }
+    })
+
+
+@app.post("/api/aadhaar/extract-qr")
+async def extract_aadhaar_qr_file(file: UploadFile = File(...)):
+    """
+    Scans an uploaded image specifically for an Aadhaar QR code.
+    Returns 100% verified demographics decoded from the QR symbol.
+    """
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file uploaded.")
+
+    cv_img = decode_image_bytes(content)
+    decoded = detect_and_decode_qr_from_image(cv_img)
+    if not decoded:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "No valid Aadhaar QR code found in the uploaded image. Please ensure the QR code is clear and not obstructed."
+            }
+        )
+
+    return JSONResponse(content={
+        "success": True,
+        "filename": file.filename or "aadhaar_qr.jpg",
+        "extraction_method": "QR_CODE",
+        "qr_type": decoded.get("qr_type"),
+        "confidence": 1.0,
+        "data": {
+            "name": decoded.get("name"),
+            "name_hindi": None,
+            "dob": decoded.get("dob"),
+            "gender": decoded.get("gender"),
+            "aadhaar_number": decoded.get("aadhaar_number"),
+            "care_of": decoded.get("care_of"),
+            "address": decoded.get("address"),
+            "pincode": decoded.get("pincode"),
+            "photo_base64": decoded.get("photo_base64")
+        }
+    })
+

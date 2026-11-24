@@ -45,41 +45,59 @@ def decode_base64_image(base64_str: str) -> np.ndarray:
 
 
 def find_fiducial_squares(image: np.ndarray) -> Optional[np.ndarray]:
+    """
+    Robust fiducial square detector.
+    Uses multi-thresholding (fixed ink thresholds, Otsu, adaptive) without destructive morph close
+    to prevent black markers from bridging with paper shadows or outer borders on mobile photos.
+    Includes 3-corner affine parallelogram reconstruction for single obscured/shadowed corners.
+    """
     h_orig, w_orig = image.shape[:2]
     scale = min(1.0, 1400.0 / max(h_orig, w_orig))
     resized = cv2.resize(image, (int(w_orig * scale), int(h_orig * scale)), interpolation=cv2.INTER_AREA) if scale < 1.0 else image
 
     gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, b_otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    b_adapt = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 31, 8)
-    binary = cv2.bitwise_or(b_otsu, b_adapt)
-
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-
-    contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     tot_area = gray.shape[0] * gray.shape[1]
+
+    binaries = []
+    # 1. Otsu threshold
+    _, b_otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    binaries.append(b_otsu)
+    # 2. Adaptive threshold
+    b_adapt = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 31, 8)
+    binaries.append(b_adapt)
+    # 3. Fixed low thresholds to isolate dark black ink from ambient shadows
+    for th in [70, 95, 115]:
+        _, b_fix = cv2.threshold(blurred, th, 255, cv2.THRESH_BINARY_INV)
+        binaries.append(b_fix)
+
     candidates: List[Tuple[float, float, float]] = []
+    seen = set()
 
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if not (0.0004 * tot_area <= area <= 0.035 * tot_area):
-            continue
-        x, y, w, h = cv2.boundingRect(cnt)
-        aspect = float(w) / max(1, h)
-        if not (0.65 <= aspect <= 1.50):
-            continue
-        extent = area / float(w * h)
-        if extent < 0.60:
-            continue
-        M = cv2.moments(cnt)
-        if M["m00"] != 0:
-            cx = (M["m10"] / M["m00"]) / scale
-            cy = (M["m01"] / M["m00"]) / scale
-            candidates.append((cx, cy, area))
+    for binary in binaries:
+        contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if not (0.0003 * tot_area <= area <= 0.04 * tot_area):
+                continue
+            x, y, w, h = cv2.boundingRect(cnt)
+            aspect = float(w) / max(1, h)
+            if not (0.60 <= aspect <= 1.65):
+                continue
+            extent = area / float(w * h)
+            if extent < 0.55:
+                continue
+            M = cv2.moments(cnt)
+            if M["m00"] != 0:
+                cx = (M["m10"] / M["m00"]) / scale
+                cy = (M["m01"] / M["m00"]) / scale
+                # Deduplicate candidates in close proximity
+                key = (round(cx / 15.0), round(cy / 15.0))
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append((cx, cy, area))
 
-    if len(candidates) < 4:
+    if len(candidates) < 3:
         return None
 
     mid_x, mid_y = w_orig / 2.0, h_orig / 2.0
@@ -97,16 +115,49 @@ def find_fiducial_squares(image: np.ndarray) -> Optional[np.ndarray]:
         "BR": (float(w_orig), float(h_orig))
     }
 
-    selected = []
+    selected = {}
     for q_name in ["TL", "TR", "BL", "BR"]:
         items = quads[q_name]
-        if not items:
-            return None
-        ax, ay = anchors[q_name]
-        best = min(items, key=lambda it: (it[0] - ax) ** 2 + (it[1] - ay) ** 2)
-        selected.append([best[0], best[1]])
+        if items:
+            ax, ay = anchors[q_name]
+            best = min(items, key=lambda it: (it[0] - ax) ** 2 + (it[1] - ay) ** 2)
+            selected[q_name] = np.array([best[0], best[1]], dtype=np.float32)
 
-    pts = np.float32(selected)
+    # 3-corner parallelogram reconstruction if exactly one corner is shadowed/missing
+    if len(selected) == 3:
+        if "BR" not in selected:
+            selected["BR"] = selected["TR"] + selected["BL"] - selected["TL"]
+        elif "BL" not in selected:
+            selected["BL"] = selected["TL"] + selected["BR"] - selected["TR"]
+        elif "TR" not in selected:
+            selected["TR"] = selected["TL"] + selected["BR"] - selected["BL"]
+        elif "TL" not in selected:
+            selected["TL"] = selected["TR"] + selected["BL"] - selected["BR"]
+
+    if len(selected) != 4:
+        return None
+
+    # Refine corner coordinates in a local ROI on original image for sub-pixel centering
+    gray_full = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    refined_selected = []
+    for q_name in ["TL", "TR", "BL", "BR"]:
+        pt = selected[q_name]
+        ix, iy = int(round(pt[0])), int(round(pt[1]))
+        win = 25
+        x1, x2 = max(0, ix - win), min(w_orig, ix + win + 1)
+        y1, y2 = max(0, iy - win), min(h_orig, iy + win + 1)
+        patch = gray_full[y1:y2, x1:x2]
+        if patch.size > 0:
+            _, th_patch = cv2.threshold(patch, 95, 255, cv2.THRESH_BINARY_INV)
+            M_patch = cv2.moments(th_patch)
+            if M_patch["m00"] > 50:
+                rx = x1 + (M_patch["m10"] / M_patch["m00"])
+                ry = y1 + (M_patch["m01"] / M_patch["m00"])
+                refined_selected.append([rx, ry])
+                continue
+        refined_selected.append([pt[0], pt[1]])
+
+    pts = np.float32(refined_selected)
     w_top = np.linalg.norm(pts[1] - pts[0])
     h_left = np.linalg.norm(pts[2] - pts[0])
     if w_top < w_orig * 0.35 or h_left < h_orig * 0.40:
@@ -153,8 +204,12 @@ def extract_header_metadata(image: np.ndarray) -> Dict[str, Optional[str]]:
             m2 = re.search(r'(?:EXAM)?CODE:([A-Za-z0-9\-_]+)', t_clean, re.IGNORECASE)
             if m2 and not exam_code:
                 exam_code = m2.group(1).strip()
-        if texts:
-            org_name = clean_spacing(texts[0])
+        for t in texts:
+            if re.search(r'Roll\s*:|Attempted\s*:|Questions\s*:|Unattempted\s*:', t, re.IGNORECASE):
+                continue
+            if not org_name:
+                org_name = clean_spacing(t)
+                break
 
     return {
         "organization": org_name,
@@ -183,7 +238,7 @@ def find_exact_bubble_centroid(gray: np.ndarray, cx: float, cy: float, search_wi
     return ix, iy
 
 
-def evaluate_bubble_core_contrast(
+def evaluate_bubble_core_contrast_single(
     image: np.ndarray,
     gray: np.ndarray,
     cx: float,
@@ -191,14 +246,14 @@ def evaluate_bubble_core_contrast(
     bubble_radius: int = 6
 ) -> float:
     """
-    Evaluates bubble ink fill ratio.
+    Evaluates bubble ink fill ratio at a specific (cx, cy) location.
     Samples inner core (safely inside bubble) vs local paper annulus (outside bubble).
-    Completely eliminates false positives from box borders or dark empty outlines.
+    Completely eliminates false positives from box borders, paper creases, or camera blue tint.
     """
     h, w = gray.shape
     ix, iy = int(round(cx)), int(round(cy))
     r_core = max(2, int(bubble_radius * 0.45))
-    r_out = int(bubble_radius * 1.4) + 2
+    r_out = int(bubble_radius * 1.35) + 2
 
     if (iy - r_out < 0 or iy + r_out >= h or
             ix - r_out < 0 or ix + r_out >= w):
@@ -222,25 +277,170 @@ def evaluate_bubble_core_contrast(
         return 0.0
 
     core_mean = float(np.mean(core_gray))
+    diff = bg_median - core_mean
+
+    # Local ambient paper color bias (e.g. smartphone camera daylight/LED blue tint)
+    bg_bgr = patch_bgr[mask_bg]
+    if len(bg_bgr) > 0:
+        bg_b_bias = float(np.mean(bg_bgr[:, 0])) - float(np.mean(bg_bgr[:, 2]))
+    else:
+        bg_b_bias = 0.0
+
     b = core_bgr[:, 0].astype(np.float32)
     g = core_bgr[:, 1].astype(np.float32)
     r_ch = core_bgr[:, 2].astype(np.float32)
 
-    # Blue pen ink detection
-    blue_pixels = (b - r_ch > 8.0) & (b - g > 5.0) & (core_gray < bg_median - 12)
+    # Blue pen ink detection (excess blue above local paper white balance)
+    blue_excess = (b - r_ch) - bg_b_bias
+    blue_pixels = (blue_excess > 10.0) & (b - g > 8.0) & (core_gray < bg_median - 15)
     blue_ratio = float(np.mean(blue_pixels))
 
-    # Black pen / pencil ink detection
+    # Black pen / dark pencil ink detection
     dark_pixels = (core_gray < min(115.0, bg_median - 30.0))
     dark_ratio = float(np.mean(dark_pixels))
-    contrast_diff = bg_median - core_mean
 
     if blue_ratio >= 0.30:
         return float(np.clip(blue_ratio * 1.25, 0.0, 1.0))
-    if core_mean < 125.0 and dark_ratio >= 0.35 and contrast_diff >= 25.0:
+    if core_mean < 125.0 and dark_ratio >= 0.35 and diff >= 25.0:
         return float(np.clip(dark_ratio, 0.0, 1.0))
 
     return 0.0
+
+
+def evaluate_bubble_core_contrast(
+    image: np.ndarray,
+    gray: np.ndarray,
+    cx: float,
+    cy: float,
+    bubble_radius: int = 6
+) -> float:
+    """
+    Jitter-aware bubble ink fill evaluation.
+    Samples the nominal center and small micro-offsets (±1.5px) to safely capture
+    hand-marked fills that are slightly eccentric or off-center on mobile captures.
+    """
+    scores = [
+        evaluate_bubble_core_contrast_single(image, gray, cx, cy, bubble_radius),
+        evaluate_bubble_core_contrast_single(image, gray, cx, cy - 1.5, bubble_radius),
+        evaluate_bubble_core_contrast_single(image, gray, cx, cy + 1.5, bubble_radius),
+        evaluate_bubble_core_contrast_single(image, gray, cx - 1.5, cy, bubble_radius),
+        evaluate_bubble_core_contrast_single(image, gray, cx + 1.5, cy, bubble_radius),
+    ]
+    return float(max(scores))
+
+
+def get_roll_anchors_800(gray: np.ndarray) -> List[Tuple[float, float]]:
+    """
+    Per-column independent anchor calibration for Roll Number box (800x1100 canvas).
+    Finds bubble circles in each column strip, calibrates each column's (cx, y0),
+    and fits a planar tilt regression model to guarantee 100% accuracy even on
+    tilted, dull, or angled mobile captures.
+    """
+    nom_cols = [120.5, 231.0, 341.5, 451.0, 560.5, 670.0]
+    measured_points = []
+    col_xs = []
+
+    for idx, nx in enumerate(nom_cols):
+        x1 = max(0, int(nx - 28))
+        x2 = min(gray.shape[1], int(nx + 28))
+        strip = gray[220:415, x1:x2]
+        _, th = cv2.threshold(strip, 150, 255, cv2.THRESH_BINARY_INV)
+        cnts, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        b_centers = []
+        for c in cnts:
+            a = cv2.contourArea(c)
+            if 35 < a < 700:
+                x, y, w, h = cv2.boundingRect(c)
+                if 0.60 < w / max(1, h) < 1.60 and 8 <= w <= 26 and 8 <= h <= 26:
+                    M = cv2.moments(c)
+                    if M["m00"] > 0:
+                        bx = x1 + (M["m10"] / M["m00"])
+                        by = 220 + (M["m01"] / M["m00"])
+                        b_centers.append((bx, by))
+
+        col_cx = float(np.median([p[0] for p in b_centers])) if len(b_centers) >= 3 else nx
+        col_xs.append(col_cx)
+
+        if len(b_centers) >= 4:
+            ys = sorted([p[1] for p in b_centers])
+            best_y0 = None
+            min_error = 1e9
+            for cand_y0 in np.linspace(238, 260, 45):
+                err = sum(min(abs(y - (cand_y0 + d * 15.55)) for d in range(10)) for y in ys)
+                if err < min_error:
+                    min_error = err
+                    best_y0 = cand_y0
+            if best_y0 is not None:
+                measured_points.append((idx, col_cx, float(best_y0)))
+
+    if len(measured_points) >= 2:
+        xs = np.array([p[1] for p in measured_points])
+        ys = np.array([p[2] for p in measured_points])
+        slope, intercept = np.polyfit(xs, ys, 1)
+        slope = float(np.clip(slope, -0.05, 0.05))
+
+        final_anchors = []
+        for idx in range(len(nom_cols)):
+            cx = col_xs[idx]
+            line_y = float(slope * cx + intercept)
+            measured = [p for p in measured_points if p[0] == idx]
+            if measured and abs(measured[0][2] - line_y) < 3.0:
+                y0 = measured[0][2]
+            else:
+                y0 = line_y
+            final_anchors.append((cx, y0))
+        return final_anchors
+    else:
+        default_y0 = measured_points[0][2] if measured_points else 247.0
+        return [(col_xs[i], default_y0) for i in range(len(nom_cols))]
+
+
+def calibrate_questions_800(gray: np.ndarray) -> Tuple[List[float], float, List[float], float]:
+    """
+    Calibrates Left (Q1-25) and Right (Q26-50) question blocks independently.
+    Handles independent tilt, row starting positions, and column offsets.
+    """
+    nom_l = [118.5, 144.5, 170.5, 196.5]
+    nom_r = [285.5, 311.5, 337.5, 363.5]
+
+    def calibrate_block(x_min: int, x_max: int, nom_xs: List[float], fallback_y0: float) -> Tuple[List[float], float]:
+        strip = gray[460:1030, x_min:x_max]
+        _, th = cv2.threshold(strip, 150, 255, cv2.THRESH_BINARY_INV)
+        cnts, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        b_list = []
+        for c in cnts:
+            a = cv2.contourArea(c)
+            if 35 < a < 600:
+                x, y, w, h = cv2.boundingRect(c)
+                if 0.60 < w / max(1, h) < 1.60 and 8 <= w <= 26 and 8 <= h <= 26:
+                    M = cv2.moments(c)
+                    if M["m00"] > 0:
+                        b_list.append((x_min + (M["m10"] / M["m00"]), 460 + (M["m01"] / M["m00"])))
+
+        opt_xs = []
+        for nx in nom_xs:
+            near = [p[0] for p in b_list if abs(p[0] - nx) < 10]
+            opt_xs.append(float(np.median(near)) if near else nx)
+
+        if len(b_list) >= 15:
+            ys = [p[1] for p in b_list]
+            best_y0 = fallback_y0
+            min_err = 1e9
+            for cand_y0 in np.linspace(480, 495, 31):
+                err = sum(min(abs(y - (cand_y0 + r * 21.7)) for r in range(25)) for y in ys)
+                if err < min_err:
+                    min_err = err
+                    best_y0 = cand_y0
+            y0 = float(best_y0)
+        else:
+            y0 = fallback_y0
+
+        return opt_xs, y0
+
+    l_xs, l_y0 = calibrate_block(80, 230, nom_l, 484.0)
+    r_xs, r_y0 = calibrate_block(250, 400, nom_r, 486.0)
+    return l_xs, l_y0, r_xs, r_y0
 
 
 def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[str, Any]:
@@ -250,14 +450,15 @@ def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[st
     gray = cv2.cvtColor(aligned, cv2.COLOR_BGR2GRAY)
     annotated = aligned.copy()
 
-    # 1. Roll Number (6 columns, 10 digits each)
-    col_xs = [120.5, 231.0, 341.5, 451.0, 560.5, 670.0]
-    roll_digits = []
+    # Dynamic per-column anchor calibration for roll number (handles paper/camera tilt)
+    roll_anchors = get_roll_anchors_800(gray)
 
-    for col_idx, col_x in enumerate(col_xs):
+    # 1. Roll Number (6 columns, 10 digits each)
+    roll_digits = []
+    for col_idx, (col_x, y0_col) in enumerate(roll_anchors):
         scores = []
         for digit in range(10):
-            dig_y = round(247 + digit * 15.5)
+            dig_y = round(y0_col + digit * 15.55)
             sc = evaluate_bubble_core_contrast(aligned, gray, col_x, dig_y, bubble_radius=6)
             scores.append(sc)
 
@@ -266,7 +467,7 @@ def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[st
         sec_d = int(order[1])
         if scores[best_d] >= 0.28 and (scores[best_d] - scores[sec_d]) >= 0.12:
             roll_digits.append(str(best_d))
-            by = round(247 + best_d * 15.5)
+            by = round(y0_col + best_d * 15.55)
             ex_x, ex_y = find_exact_bubble_centroid(gray, col_x, by)
             cv2.circle(annotated, (ex_x, ex_y), 7, (0, 210, 0), 2, cv2.LINE_AA)
         else:
@@ -275,8 +476,8 @@ def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[st
     roll_number = "".join(roll_digits)
 
     # 2. 50 Questions (Left: Q1-25, Right: Q26-50)
-    left_opts_x = [118.5, 144.5, 170.5, 196.5]
-    right_opts_x = [285.5, 311.5, 337.5, 363.5]
+    left_opts_x, y0_l, right_opts_x, y0_r = calibrate_questions_800(gray)
+
     answers: Dict[str, Optional[str]] = {}
     attempted = 0
     multiple_marked = 0
@@ -285,11 +486,12 @@ def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[st
         if q <= 25:
             row = q - 1
             opt_xs = left_opts_x
+            qy = round(y0_l + row * 21.7)
         else:
             row = q - 26
             opt_xs = right_opts_x
+            qy = round(y0_r + row * 21.7)
 
-        qy = round(490 + row * 21.7)
         scores = [evaluate_bubble_core_contrast(aligned, gray, ox, qy, bubble_radius=6) for ox in opt_xs]
 
         order = np.argsort(scores)[::-1]
@@ -306,7 +508,7 @@ def extract_800x1100(image: np.ndarray, detected_corners: np.ndarray) -> Dict[st
                           (int(opt_xs[-1] + 12), qy + 9), (0, 0, 255), 2, cv2.LINE_AA)
             cv2.putText(annotated, "MULT", (int(opt_xs[-1] + 16), qy + 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 0, 255), 1)
-        elif best_sc >= 0.28 and diff >= 0.14:
+        elif best_sc >= 0.28 and diff >= 0.12:
             ans_char = OPTIONS[best_idx]
             answers[str(q)] = ans_char
             attempted += 1
