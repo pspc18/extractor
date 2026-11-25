@@ -34,21 +34,7 @@ HEADER_NOISE_WORDS = {
 }
 
 
-def decode_image_bytes(image_bytes: bytes) -> np.ndarray:
-    np_arr = np.frombuffer(image_bytes, np.uint8)
-    image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError("Invalid image file provided.")
-    return image
-
-
-def decode_base64_image(base64_str: str) -> np.ndarray:
-    if not base64_str:
-        raise ValueError("Empty base64 string provided.")
-    if "," in base64_str:
-        base64_str = base64_str.split(",", 1)[1]
-    image_bytes = base64.b64decode(base64_str)
-    return decode_image_bytes(image_bytes)
+from file_decoder import decode_image_bytes, decode_base64_image
 
 
 def enhance_card_image(img: np.ndarray) -> np.ndarray:
