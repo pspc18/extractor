@@ -910,19 +910,15 @@ def process_dynamic_omr(
     # 1. Extract Answers and Roll Number first (to produce deskewed aligned canvas)
     corners = find_fiducial_squares(image)
     if corners is not None:
-        w_span = np.linalg.norm(corners[1] - corners[0])
-        if w_span <= 850 or (w <= 950 and h <= 1250):
-            res = extract_800x1100(image, corners)
-        else:
-            res = extract_1200x1600(image, corners)
+        res = extract_800x1100(image, corners)
         # Run OCR on the deskewed aligned canvas for maximum text clarity & accurate spacing
         header_meta = extract_header_metadata(res.get("aligned", image))
     else:
         try:
             res = extract_universal_dynamic(image)
         except Exception:
-            fallback_corners = np.float32([[80, 80], [w - 80, 80], [80, h - 80], [w - 80, h - 80]])
-            res = extract_1200x1600(image, fallback_corners)
+            fallback_corners = np.float32([[48, 48], [w - 48, 48], [48, h - 48], [w - 48, h - 48]])
+            res = extract_800x1100(image, fallback_corners)
         header_meta = extract_header_metadata(image)
 
     # Save annotated debug image
